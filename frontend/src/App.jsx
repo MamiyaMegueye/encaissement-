@@ -4,11 +4,8 @@ import { COLONNES, ONGLETS } from './datasets.js';
 import { fmtEntier, fmtMontant, periodes, versISO } from './format.js';
 import { useData, useRetard } from './hooks/useData.js';
 import { useLive } from './hooks/useLive.js';
-import Dfc from './components/Dfc.jsx';
-import Manuels from './components/Manuels.jsx';
 import Tarifs from './components/Tarifs.jsx';
 import Evolution from './components/Evolution.jsx';
-import ModalChutes from './components/ModalChutes.jsx';
 import DataTable from './components/DataTable.jsx';
 import logoSnde from './logo-snde.js';
 
@@ -115,7 +112,7 @@ function Panneau({ onglet, filtres, version, lignesControle, chargementControle,
             onChange={(e) => setRecherche(e.target.value)}
             aria-label="Rechercher dans le tableau"
           />
-          {onglet.id !== 'dfc' && onglet.id !== 'manuels' && onglet.id !== 'tarifs' && !evolution && <BoutonsExport jeu={onglet.id} filtres={filtresOnglet} />}
+          {onglet.id !== 'tarifs' && !evolution && <BoutonsExport jeu={onglet.id} filtres={filtresOnglet} />}
         </div>
       </div>
       {onglet.id === 'encaissements' && (
@@ -168,12 +165,8 @@ function Panneau({ onglet, filtres, version, lignesControle, chargementControle,
           onLigne={(l) => onCentre(l.centre)}
           aideLigne="Cliquer pour ne garder que ce centre"
         />
-      ) : onglet.id === 'dfc' ? (
-        <Dfc filtres={filtres} version={version} recherche={recherche} onCentre={onCentre} onPeriode={onPeriode} />
       ) : onglet.id === 'tarifs' ? (
         <Tarifs filtres={filtres} version={version} recherche={recherche} />
-      ) : onglet.id === 'manuels' ? (
-        <Manuels filtres={filtres} version={version} recherche={recherche} onCentre={onCentre} onDates={onDates} />
       ) : (
         <ContenuJeu
           id={onglet.id}
@@ -197,8 +190,6 @@ export default function App() {
   const live = useLive();
   const version = live.version + manuel;
   const controle = useData('controle', filtres, version);
-  const chutes = useData('chutes_secteur/alerte', null, version).data;
-  const [modalChutes, setModalChutes] = useState(false);
 
   useEffect(() => {
     getJSON('centres')
@@ -389,25 +380,6 @@ export default function App() {
         </p>
       )}
 
-
-      {chutes?.nb > 0 && (
-        <div className="alerte-orange cliquable" role="alert" onClick={() => setModalChutes(true)} style={{ cursor: 'pointer' }}>
-          <span className="alerte-orange-icone" aria-hidden="true">⚠</span>
-          <span className="alerte-orange-texte">
-            <strong>
-              {chutes.nb} secteur{chutes.nb > 1 ? 's' : ''} en chute d'encaissement (≥ 20 %)
-            </strong>
-            {' · '}
-            {chutes.mois_actuel} (j1–j{chutes.jour_compare}) vs {chutes.mois_reference}
-            {' · '}
-            {chutes.secteurs.slice(0, 5).map((s) =>
-              `${s.secteur} (${s.variation_pct} %)`
-            ).join(', ')}
-            {chutes.nb > 5 ? ` … et ${chutes.nb - 5} autre${chutes.nb - 5 > 1 ? 's' : ''}` : ''}
-          </span>
-        </div>
-      )}
-
       {controle.attente && (
         <p className="info-chargement" role="status">
           {controle.attente}
@@ -429,10 +401,6 @@ export default function App() {
         ))}
       </nav>
 
-      {modalChutes && chutes && (
-        <ModalChutes chutes={chutes} onFermer={() => setModalChutes(false)} />
-      )}
-
       <Panneau
         key={onglet.id}
         onglet={onglet}
@@ -441,10 +409,7 @@ export default function App() {
         lignesControle={lignes}
         chargementControle={controle.chargement}
         onCentre={(c) => changer({ centre: String(c) })}
-        // Clic sur un mois du croisement DFC : la page passe sur ce mois et ce centre.
-        onPeriode={(mois, centre) => changer({ ...bornesMois(mois), centre: String(centre ?? filtres.centre ?? '') })}
-        // Reçus manuels : la page passe sur toute la période des reçus importés.
-        onDates={(debut, fin) => changer({ dateDebut: debut, dateFin: fin })}
+
       />
     </div>
   );

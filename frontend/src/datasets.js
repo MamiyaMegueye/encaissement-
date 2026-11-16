@@ -37,18 +37,6 @@ export const ONGLETS = [
     description: 'Reçus de caisse annulés sur la période.',
   },
   {
-    id: 'dfc',
-    titre: 'Croisement DFC',
-    description:
-      'Importer les fichiers saisis par la DFC (un par centre) : chaque jour est comparé au CRM. Un jour non saisi est un jour dont le caissier n’a pas envoyé les pièces.',
-  },
-  {
-    id: 'manuels',
-    titre: 'Reçus manuels',
-    description:
-      'Importer le fichier des reçus manuels écrits par les centres pendant les coupures de réseau : chaque reçu est cherché dans les encaissements en espèces du CRM, par référence, montant et date.',
-  },
-  {
     id: 'tarifs',
     titre: 'Tarifs',
     description:

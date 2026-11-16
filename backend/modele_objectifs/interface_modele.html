@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Objectifs SNDE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE  : salle de pilotage d'un service d'eau, net, chaleureux, lisible en réunion
+   IDEA   : le réseau d'eau — le coefficient du Pic est une vanne que l'on règle ; les objectifs coulent en direct
+   PICTURE: grand total + jauge face au record, courbe d'évolution d'un centre, graphes à taille réelle
+   COLOUR : fond blanc, beige sable en soutien, vert canard dominant, or en accent, rouge pour les baisses
+   TYPE   : Plus Jakarta Sans ; LAYOUT : bandeau réglages + résultat, menu collant, sections en cartes */
+:root{color-scheme:light dark;
+ --bg:light-dark(#ffffff,#10181a);--paper:light-dark(#ffffff,#162124);--ink:light-dark(#1f2a2e,#ece6da);--mute:light-dark(#6b6f73,#a9b3b1);
+ --line:light-dark(#ece3d3,#2a3a3c);--alt:light-dark(#fbf8f2,#1a2729);--pale:light-dark(#f3ebdd,#22322f);--beige:light-dark(#f6efe3,#18231f);
+ --teal:#0b4f4a;--tt:light-dark(#0b4f4a,#8fd3c6);--teal2:#14786f;--teal3:#2a9d8f;--gold:#c9a227;--warn:#d64545;--sh:0 1px 2px rgba(60,45,20,.05),0 10px 30px rgba(60,45,20,.07)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html{scroll-padding-top:72px;scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Plus Jakarta Sans","Segoe UI",system-ui,sans-serif;overflow-x:clip}
+.band{padding:clamp(24px,3.5vw,48px) max(5vw,16px)}.wrap{max-width:1240px;margin:0 auto}
+header.band{padding-bottom:clamp(64px,7vw,96px)}
+header{position:relative;background:linear-gradient(180deg,var(--beige),light-dark(#fbf7f0,#141e1c));color:var(--ink);border-bottom:3px solid var(--gold);padding-bottom:clamp(70px,8vw,110px)}
+h1{font-size:clamp(28px,4.2vw,48px);line-height:1.05;margin:0 0 8px;font-weight:800;text-wrap:balance}
+h2{font-size:clamp(20px,2.2vw,26px);line-height:1.15;margin:0 0 6px;font-weight:800;text-wrap:balance}
+h3{font-size:16px;margin:0 0 8px}
+.sub{color:var(--mute);margin:0;max-width:72ch}
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:24px;margin-top:26px;position:relative;z-index:1}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:var(--sh)}
+.ctl{margin-bottom:16px}.ctl label{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;font-weight:600;gap:4px 10px}
+.ctl output{font-size:24px;font-weight:800;white-space:nowrap;color:var(--teal2)}.ctl small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
+input[type=range]{width:100%;height:40px;accent-color:#14786f;cursor:pointer}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.hb{font:inherit;font-size:14px;font-weight:600;min-height:44px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;cursor:pointer}
+.num{width:96px;min-height:44px;font:inherit;font-size:16px;border-radius:12px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;padding:0 10px;text-align:right}
+.big{font-size:clamp(46px,7.5vw,92px);font-weight:800;line-height:1;letter-spacing:-.025em;white-space:nowrap;margin:4px 0}
+.big{color:var(--tt)}.big span{font-size:.34em;font-weight:600;color:var(--mute);margin-left:8px;letter-spacing:0}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+.kpi{font-size:13px;color:var(--mute);padding:10px 12px;border-radius:14px;background:var(--alt);border:1px solid var(--line)}.kpi b{display:block;font-size:22px;color:var(--ink);white-space:nowrap}
+.gbar{position:relative;height:16px;border-radius:9px;background:var(--pale);margin:8px 0 4px}
+.gbar i{position:absolute;inset:0 auto 0 0;border-radius:9px;background:linear-gradient(90deg,#0b4f4a,#2a9d8f);transition:width .4s}
+.gbar u{position:absolute;top:-6px;bottom:-6px;width:2px;background:var(--gold)}
+.zr{display:grid;grid-template-columns:minmax(0,9.5em) minmax(0,1fr) 4.2em;gap:10px;align-items:center;font-size:13px;color:var(--ink);margin:5px 0}.zr span:last-child{text-align:right;font-weight:700;color:var(--tt);white-space:nowrap}.zb{height:8px;border-radius:4px;background:var(--pale)}.zb i{display:block;height:100%;border-radius:4px;background:var(--teal3);transition:width .4s}
+.glab{display:flex;justify-content:space-between;font-size:13px;color:var(--mute);gap:8px;flex-wrap:wrap}
+nav{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;gap:4px;overflow-x:auto;padding:8px max(5vw,16px)}
+nav a{flex:none;color:var(--ink);text-decoration:none;font-weight:600;font-size:14px;padding:10px 14px;border-radius:999px;min-height:44px;display:flex;align-items:center}
+nav a:hover{background:var(--pale)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:var(--sh)}
+.g2{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:24px}
+.g2b{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}
+.note{color:var(--mute);font-size:14px;margin:0 0 12px;max-width:80ch}
+.fig{position:relative;min-height:330px}.fig>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.leg{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--mute);margin-top:10px}
+.leg i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.eq{font-size:clamp(15px,1.6vw,18px);background:var(--alt);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:10px 0 16px;line-height:1.8}
+.eq b{color:var(--teal2)}
+.steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:8px}
+.st{position:relative;background:var(--alt);border:1px solid var(--line);border-radius:16px;padding:14px}
+.st em{font-style:normal;display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--teal);color:#fff;font-weight:800;font-size:14px}
+.st b{display:block;font-size:22px;margin:8px 0 2px;white-space:nowrap}.st p{margin:0;font-size:13px;color:var(--mute)}
+.st.fin{background:var(--teal);color:#fff;border-color:var(--teal)}.st.fin p{color:#d7ebe7}.st.fin em{background:var(--gold);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.chip{border:1px solid var(--line);border-radius:14px;padding:10px 14px;font-size:13px;color:var(--mute);background:var(--alt)}.chip b{display:block;font-size:20px;color:var(--ink)}
+.wr{display:grid;grid-template-columns:minmax(0,12em) minmax(0,1fr) 3.4em;gap:10px;align-items:center;font-size:14px;margin:7px 0}
+.wb{height:12px;border-radius:6px;background:var(--pale)}.wb i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#0b4f4a,#2a9d8f)}
+.wr em{font-style:normal;text-align:right;font-weight:700}
+.seg{display:inline-flex;background:var(--alt);border:1px solid var(--line);border-radius:999px;padding:4px;gap:4px;flex-wrap:wrap}
+.seg button{font:inherit;font-size:14px;font-weight:600;min-height:40px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--ink);cursor:pointer}
+.seg button.on{background:var(--teal);color:#fff}
+.hm{display:grid;gap:3px;margin-top:14px;font-size:13px}
+.hm div{display:flex;align-items:center;justify-content:center;min-height:52px;border-radius:8px;font-weight:700;font-variant-numeric:tabular-nums;text-align:center;padding:2px}
+.hm .hl{justify-content:flex-end;padding-right:10px;font-weight:600;text-align:right;color:var(--ink)}
+.hm .ht{min-height:auto;padding:4px 2px;font-weight:600;color:var(--mute);font-size:12px;line-height:1.2}
+.hscale{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mute);margin-top:10px}
+.hscale i{flex:0 0 160px;height:10px;border-radius:5px;background:linear-gradient(90deg,#d64545,#ffffff,#0b4f4a)}
+.exp ul{margin:8px 0 0;padding-left:18px}.exp li{margin:6px 0}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--pale);color:var(--tt);margin-left:4px;white-space:nowrap}
+.tools{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+.tools input,.tools select,.sel{font:inherit;font-size:16px;min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--paper);color:var(--ink);padding:0 12px}
+.tools input{flex:1 1 220px}
+.b2{font:inherit;font-size:14px;font-weight:600;min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:var(--paper);color:var(--ink);cursor:pointer}
+.ck{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}
+.ck div{background:var(--alt);border:1px solid var(--line);border-radius:14px;padding:10px 12px;font-size:13px;color:var(--mute)}.ck b{display:block;font-size:18px;color:var(--ink);white-space:nowrap}
+.verdict{border-left:4px solid var(--gold);background:var(--alt);padding:10px 14px;border-radius:0 12px 12px 0;font-size:15px}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:var(--paper)}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th{position:sticky;top:0;background:var(--teal);color:#fff;font-weight:600;border-bottom:3px solid var(--gold);padding:11px 12px;text-align:right;white-space:nowrap}
+th:nth-child(-n+2){text-align:left}
+td{padding:7px 12px;border-top:1px solid var(--line);text-align:right;white-space:nowrap}td:nth-child(-n+2){text-align:left}
+tbody tr:nth-child(even) td{background:var(--alt)}
+tr.zh td{background:var(--pale)!important;color:var(--tt);font-weight:700;cursor:pointer;border-top:2px solid var(--gold)}
+tr.zt td{font-weight:700;background:var(--beige)!important}
+tr.gt td{background:var(--teal)!important;color:#fff;font-weight:800;font-size:15px}
+td.ob{color:var(--teal2);font-weight:800}
+tr.cl{cursor:pointer}tr.cl:hover td{background:var(--pale)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-left:6px;vertical-align:1px}
+footer{color:var(--mute);font-size:13px}
+@media(max-width:980px){.steps{grid-template-columns:repeat(2,minmax(0,1fr))}.st.fin{grid-column:1/-1}}
+@media(max-width:900px){.hero,.g2,.g2b{grid-template-columns:minmax(0,1fr)}.ck{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.kpis{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}table{font-size:13px}.wr{grid-template-columns:minmax(0,8em) minmax(0,1fr) 3em}.hm{font-size:12px}.hm div{min-height:44px}}
+@media(prefers-reduced-motion:reduce){.gbar i{transition:none}html{scroll-behavior:auto}}
+.evo{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin:16px 0 4px}
+.evo h3{font-size:17px;color:var(--tt);margin:0}.evo .yt{text-align:right;font-size:12px;color:var(--mute);letter-spacing:.02em}.evo .yt b{display:block;font-size:22px;color:var(--tt);letter-spacing:0;white-space:nowrap}
+.bd{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.bd.up{background:#2a9d8f;color:#fff}.bd.dn{background:#d64545;color:#fff}.bd.md{background:#e8a33d;color:#fff}.bd.fl{background:var(--pale);color:var(--mute)}
+.et td{vertical-align:top;padding:10px 12px}.et td b{display:block;font-weight:600}.et td .bd{margin-top:5px}
+
+body{font-size:14px;line-height:1.5}
+.band{padding:clamp(16px,2.4vw,30px) max(4vw,16px)}
+header.band{padding-bottom:clamp(14px,2vw,22px)}
+h1{font-size:clamp(20px,2.6vw,30px);margin:0 0 4px}
+h2{font-size:clamp(16px,1.6vw,19px)}
+h3{font-size:14px}
+.sub,.note{font-size:13px}
+.ctl label{font-size:14px}.ctl output{font-size:18px}.ctl small{font-size:12px}
+.big{font-size:clamp(34px,4.6vw,56px)}
+.kpi b{font-size:17px}.kpi{font-size:12px}
+.glab,.zr{font-size:12px}
+.hero{margin-top:0}
+.panel,.card{padding:18px;border-radius:16px}
+.st b{font-size:17px}.st p{font-size:12px}.st em{width:24px;height:24px;font-size:12px}
+.chip b{font-size:16px}.chip{font-size:12px}
+.wr{font-size:13px}.eq{font-size:14px}
+.ck b{font-size:15px}.ck div{font-size:12px}
+.evo h3{font-size:15px}.evo .yt b{font-size:18px}
+table{font-size:12.5px}th{padding:9px 10px}td{padding:6px 10px}
+.hm{font-size:12px}.hm div{min-height:42px}
+.tools input,.tools select,.sel,.b2{font-size:14px}
+nav{position:sticky;top:0}
+nav .wrap{gap:2px;padding:6px max(4vw,16px)}
+nav a{font-size:13.5px;padding:8px 16px;border-radius:10px 10px 0 0;min-height:40px;color:var(--mute);border-bottom:3px solid transparent;border-radius:0}
+nav a.on{color:var(--tt);border-bottom-color:var(--gold);background:var(--alt)}
+.tab{display:none}.tab.on{display:block;animation:fd .25s ease}
+@keyframes fd{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.tab.on{animation:none}}
+.tip{position:absolute;pointer-events:none;z-index:3;background:var(--paper);border:1px solid var(--line);box-shadow:var(--sh);border-radius:12px;padding:10px 12px;font-size:12.5px;min-width:170px;opacity:0;transition:opacity .12s;transform:translate(-50%,-100%)}
+.tip.on{opacity:1}.tip b{display:block;font-size:14px;color:var(--tt);margin-bottom:2px}.tip div{display:flex;justify-content:space-between;gap:12px;color:var(--mute)}.tip div span:last-child{color:var(--ink);font-weight:700;white-space:nowrap}
+.hz{cursor:pointer}
+.hm .cc{cursor:pointer;transition:transform .12s,box-shadow .12s}.hm .cc:hover{transform:scale(1.05)}.hm .cc.sel{box-shadow:0 0 0 3px var(--gold)}
+.sc{margin-top:18px;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px;align-items:start}
+.sc .fig{min-height:300px}
+@media(max-width:900px){.sc{grid-template-columns:minmax(0,1fr)}}
+#tableau .scroll{max-width:640px}
+</style>
+</head>
+<body>
+<header class="band"><div class="wrap">
+  <h1 id="ttl">Objectifs d'encaissement</h1>
+  <p class="sub" id="lead"></p>
+</div></header>
+<nav aria-label="Onglets" role="tablist"><div class="wrap">
+  <a href="#objectifs" data-t="objectifs">Objectifs</a><a href="#evolution" data-t="evolution">Évolution 2026</a><a href="#correlations" data-t="correlations">Corrélations</a><a href="#modele" data-t="modele">Le modèle</a><a href="#tableau" data-t="tableau">Tableau par zone</a>
+</div></nav>
+<section class="band tab" id="objectifs"><div class="wrap">
+  <div class="hero">
+    <div class="panel">
+      <div class="ctl">
+        <label for="coef">Objectif minimum : coefficient × Pic 2026 <output id="coefv"></output></label>
+        <input id="coef" type="range" min="1" max="1.5" step="0.01">
+        <small>Chaque centre doit dépasser son meilleur mois de 2026 de ce coefficient.</small>
+      </div>
+      <div class="ctl">
+        <label for="seuil">Mois exceptionnels : au-delà de × la médiane du centre <output id="seuilv"></output></label>
+        <input id="seuil" type="range" min="1.5" max="4" step="0.1">
+        <small>Un mois au-dessus de ce seuil est ramené au seuil avant de calculer le Pic : un gros arriéré payé une fois ne gonfle pas l'objectif.</small>
+      </div>
+
+
+    </div>
+    <div class="panel">
+      <div style="font-size:14px;color:var(--mute)" id="mlab"></div>
+      <div class="big" id="total"></div>
+
+      <div style="margin-top:18px">
+        <div class="glab"><span>Objectif face au réel national</span><span id="gtxt"></span></div>
+        <div class="gbar"><i id="gfill"></i><u id="gmoy"></u><u id="grec"></u></div>
+        <div class="glab"><span id="gl1"></span><span id="gl2"></span></div>
+      </div>
+      <div id="alerte" style="margin-top:12px;font-size:14px;color:var(--warn)"></div>
+      <div id="zbars" style="margin-top:14px"></div>
+    </div>
+  </div>
+</div></section>
+
+
+<section class="band tab" id="modele"><div class="wrap">
+  <div class="card">
+    <h2>Comment le modèle multiniveau fixe l'objectif</h2>
+    <p class="note" id="mnote"></p>
+    <div class="eq">Encaissement<sub>centre, mois</sub> = <b>β₀</b> + <b>β</b> × critères du centre + effet du <b>mois</b> + effet de la <b>zone</b> + <b>u</b><sub>centre</sub> + erreur
+      <br><span style="font-size:14px;color:var(--mute)"><b>u</b><sub>centre</sub> est l'effet propre du centre (recouvrement, population…) : ce qu'il encaisse en plus ou en moins à critères égaux. Estimation REML, deux modèles séparés.</span></div>
+    <div class="g2b" style="margin-top:22px">
+      <div><h3>Poids des critères</h3><div id="poids"></div></div>
+      <div><h3>Qualité du modèle</h3><div class="chips" id="qual" style="margin-top:0"></div><p class="note" style="margin-top:12px">R² conditionnel : part des écarts d'encaissement expliquée par les critères et l'effet propre de chaque centre.</p></div>
+    </div>
+  </div>
+</div></section>
+
+<section class="band tab" id="correlations"><div class="wrap">
+  <div class="card">
+    <h2>Corrélations entre l'encaissement et les critères</h2>
+    <p class="note"><b>Cliquez une case</b> pour voir le nuage de points des centres derrière ce chiffre. r va de −1 à +1 : proche de +1, les deux variables montent ensemble ; proche de 0, aucun lien. « Entre centres » compare les moyennes des centres, c'est ce qui fixe surtout les poids ; « centre × mois » utilise toutes les observations.</p>
+    <div class="row" style="gap:12px">
+      <div class="seg" id="cg"></div>
+      <div class="seg" id="cv"><button type="button" data-v="centres" class="on">Entre centres</button><button type="button" data-v="obs">Centre × mois</button></div>
+    </div>
+    <div class="g2b" style="margin-top:6px">
+      <div><div class="hm" id="hm"></div><div class="hscale"><span>−1</span><i></i><span>+1</span></div></div>
+      <div class="exp" id="cexp"></div>
+    </div>
+    <div class="sc"><div><h3 id="sct"></h3><div class="fig"><svg id="chS" role="img" aria-label="Nuage de points des centres"></svg><div class="tip" id="tipS"></div></div></div><div id="scx" class="exp"></div></div>
+  </div>
+</div></section>
+
+<section class="band tab" id="evolution"><div class="wrap">
+  <div class="card">
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">Évolution des encaissements en 2026</h2>
+      <select id="csel" class="sel" aria-label="Choisir un centre"></select></div>
+    <div class="ck" id="ck"></div>
+    <div class="evo"><h3 id="evt"></h3><div class="yt">TOTAL DE L'ANNÉE<b id="evy"></b></div></div>
+    <div class="fig" style="min-height:330px"><svg id="chC" role="img" aria-label="Encaissements mensuels du centre en 2026"></svg><div class="tip" id="tipC"></div></div>
+    <p class="note" style="margin:6px 0 0">Survolez ou cliquez un mois pour voir le détail ; cliquez une ligne du tableau par zone pour changer de centre.</p>
+    <div class="scroll" style="margin-top:14px"><table class="et" id="etab"></table></div>
+    <p class="verdict" id="cv2" style="margin-top:16px"></p>
+  </div>
+</div></section>
+
+<section class="band tab" id="tableau"><div class="wrap">
+  <h2>Objectifs par zone et par centre</h2>
+  <p class="note">Cliquez sur une zone pour l'ouvrir ou la fermer, sur un centre pour voir son évolution. </p>
+  <div class="tools">
+    <input id="q" type="search" placeholder="Rechercher un centre ou un code…" aria-label="Rechercher">
+    <select id="zf" aria-label="Filtrer par zone"><option value="">Toutes les zones</option></select>
+    <button id="copy" type="button" class="b2">Copier le tableau (pour Excel)</button>
+    <button id="tog" type="button" class="b2">Tout replier</button>
+  </div>
+  <div class="scroll"><table id="tb">
+    <thead><tr><th>Exp</th><th>Centre</th><th id="thobj">Objectif</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+</div></section>
+
+<footer class="band" style="padding-top:0"><div class="wrap" id="foot"></div></footer>
+
+<script>
+{
+const D = __DATA__;
+const $ = id => document.getElementById(id);
+const fmt = v => Math.round(v).toLocaleString('fr-FR');
+const fM = v => (v/1e6).toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1});
+const f2 = v => v.toFixed(2).replace('.',',');
+const pct = v => (v>=0?'+':'') + Math.round(v*100) + ' %';
+const MC = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+const ML = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+const mlab = m => MC[+m.slice(5,7)-1] + ' ' + m.slice(2,4);
+const ZC = ['#0b4f4a','#14786f','#2a9d8f','#7cc6b8','#c9a227','#e0bf73','#8c6d46','#d9c7a7'];
+const zones = D.ordre.filter(z => D.centres.some(c => c.z === z));
+D.centres.forEach(c => { if (!zones.includes(c.z)) zones.push(c.z); c.moy = c.m12.reduce((a,b)=>a+b,0)/12; });
+const zcol = z => ZC[zones.indexOf(z) % ZC.length];
+const nat = D.mois12.map((m,i) => D.centres.reduce((a,c)=>a+c.m12[i],0));
+const REC = Math.max(...nat), MOY = nat.reduce((a,b)=>a+b,0)/nat.length, RECM = D.mois12[nat.indexOf(REC)];
+const S = {coef:D.coef, seuil:D.seuil, fixe:false, tot:(D.total||184e6)/1e6, closed:new Set(), cg:Object.keys(D.corr)[0], cv:'centres', cs:null, ci:0, cj:1, sel:null};
+let R = [];
+
+function calc(){
+  const ets = D.centres.reduce((a,c)=>a+c.etat,0);
+  R = D.centres.map(c => {
+    const lim = c.med ? S.seuil*c.med : Infinity;
+    const v = c.p26.filter(x => x!==null).map(x => Math.min(x,lim));
+    const pic = v.length ? Math.max(...v) : 0;
+    const im = c.p26.findIndex(x => x!==null && Math.min(x,lim) === pic);
+    return {c, pic, im, fl:S.coef*pic, mod:c.mod};
+  });
+  R.forEach(r => { r.o = Math.max(r.mod, r.fl); r.rel = r.fl > r.mod + 0.5; });
+  const sumO = R.reduce((a,r)=>a+r.o,0), sumF = R.reduce((a,r)=>a+r.fl,0), T = S.tot*1e6;
+  let msg = '';
+  if (S.fixe){
+    if (sumO+ets < T){ const k=(T-ets)/sumO; R.forEach(r=>r.o*=k); }
+    else if (sumO+ets > T){
+      const rest = T-ets-sumF, mg = R.reduce((a,r)=>a+Math.max(r.o-r.fl,0),0);
+      if (rest > 0 && mg > 0) R.forEach(r => r.o = r.fl + Math.max(r.o-r.fl,0)*rest/mg);
+      else { R.forEach(r => r.o = r.fl); msg = `Impossible d'atteindre ${fM(T)} M : les minimums ${f2(S.coef)} × Pic font déjà ${fM(sumF)} M. Baissez le coefficient ou le seuil.`; }
+    }
+  }
+  R.forEach(r => r.o += r.c.etat);
+  return msg;
+}
+
+function hero(msg){
+  const tot = R.reduce((a,r)=>a+r.o,0);
+  $('coefv').textContent = f2(S.coef) + ' ×';
+  $('seuilv').textContent = S.seuil.toFixed(1).replace('.',',') + ' ×';
+  $('mlab').textContent = 'Objectif total · ' + ML[+D.mois_obj.slice(5,7)-1] + ' ' + D.mois_obj.slice(0,4) + ' · indice saisonnier ' + f2(D.indice);
+  $('total').innerHTML = fM(tot) + '<span>M MRU</span>';
+  const mx = Math.max(tot, REC)*1.08;
+  $('gfill').style.width = (100*tot/mx) + '%'; $('gmoy').style.left = (100*MOY/mx) + '%'; $('grec').style.left = (100*REC/mx) + '%';
+  $('gtxt').textContent = pct(tot/REC - 1) + ' vs record';
+  $('gl1').textContent = 'Moyenne ' + fM(MOY) + ' M'; $('gl2').textContent = 'Record ' + fM(REC) + ' M (' + mlab(RECM) + ')';
+  $('alerte').textContent = msg;
+  const zt = zones.map(z => [z, R.filter(r=>r.c.z===z).reduce((a,r)=>a+r.o,0)]), zm = Math.max(...zt.map(a=>a[1]));
+  $('zbars').innerHTML = zt.map(([z,v]) => `<div class="zr"><span>${z}</span><span class="zb"><i style="width:${100*v/zm}%"></i></span><span>${fM(v)} M</span></div>`).join('');
+}
+
+function steps(){
+  const sp = D.centres.reduce((a,c)=>a+(c.pot||0),0), sb = D.centres.reduce((a,c)=>a+(c.base||0),0);
+  const sm = D.centres.reduce((a,c)=>a+c.mod,0), tot = R.reduce((a,r)=>a+r.o,0), rel = R.filter(r=>r.rel).length;
+  const it = [
+    ['Potentiel', fM(sp)+' M', 'ce que les critères de chaque centre prédisent pour un mois moyen'],
+    ['Base', fM(sb)+' M', 'le plus grand entre le potentiel et l\'encaissement moyen réel du centre'],
+    ['Répartition', D.cible ? fM(D.cible)+' M' : '—', 'cible nationale d\'un mois moyen, partagée au prorata des bases, +' + Math.round(D.prog*100) + ' % au plus'],
+    ['Saison', fM(sm)+' M', `× indice ${f2(D.indice)} : ce que le modèle propose pour ${ML[+D.mois_obj.slice(5,7)-1]}`],
+    ['Minimum × Pic', fM(tot)+' M', `chaque centre ≥ ${f2(S.coef)} × son Pic 2026 : ${rel} centres relevés`]];
+  $('steps').innerHTML = it.map((s,i) => `<div class="st${i===4?' fin':''}"><em>${i+1}</em> <strong>${s[0]}</strong><b>${s[1]}</b><p>${s[2]}</p></div>`).join('');
+}
+
+function poids(){
+  const gs = [...new Set(D.poids.map(p=>p.g))];
+  $('poids').innerHTML = gs.map(g => `<div style="margin-bottom:12px"><div style="font-weight:700;font-size:14px;margin-bottom:2px">${g}</div>` +
+    D.poids.filter(p=>p.g===g).map(p => `<div class="wr"><span>${p.k}${p.p<0.05?'':' <span class="tag">non signif.</span>'}</span><span class="wb"><i style="width:${p.v}%"></i></span><em>${Math.round(p.v)} %</em></div>`).join('') + '</div>').join('');
+  const q = Object.entries(D.r2).map(([g,v]) => `<div class="chip"><b>${Math.round(v[1]*100)} %</b>R² · ${g}</div>`);
+  if (false) q.push(`<div class="chip"><b>${D.validation.modele.erreur_ponderee_pct.toFixed(1).replace('.',',')} %</b>erreur du modèle sur ${mlab(D.validation.mois_test)}</div>`,
+    `<div class="chip"><b>${D.validation.moyenne.erreur_ponderee_pct.toFixed(1).replace('.',',')} %</b>erreur d'une simple moyenne</div>`);
+  $('qual').innerHTML = q.join('');
+  $('mnote').textContent = `Une régression qui tient compte des deux niveaux des données : ${D.nb_obs} mois observés, regroupés dans ${D.centres.length} centres (${mlab(D.fenetre[0])} → ${mlab(D.fenetre[1])}).`;
+}
+
+const cell = r => { const a = Math.abs(r), c = r >= 0 ? [11,79,74] : [214,69,69], t = Math.min(a,1);
+  const mix = c.map(v => Math.round(255 + (v-255)*t)); return `background:rgb(${mix});color:${a>0.55?'#fff':'#0f172a'}`; };
+const force = r => { const a = Math.abs(r); return a>=.8?'très fort':a>=.6?'fort':a>=.4?'moyen':'faible'; };
+const COURT = {encaissement:'Encaiss.', nb_gc:'Nb GC', ca_dom:'CA hors GC', ca_gc:'CA GC', volume_int:'Volume', nb_abonnes:'Abonnés*'};
+function corr(){
+  const G = D.corr[S.cg], M = G[S.cv], v = G.vars, k = v.length;
+  $('cg').innerHTML = Object.keys(D.corr).map(g => `<button type="button" data-g="${g}" class="${g===S.cg?'on':''}">${g}</button>`).join('');
+  [...$('cv').children].forEach(b => b.classList.toggle('on', b.dataset.v === S.cv));
+  const hm = $('hm'); hm.style.gridTemplateColumns = `minmax(0,9.5em) repeat(${k},minmax(0,1fr))`;
+  let h = '<div class="ht"></div>' + G.keys.map(key => `<div class="ht">${COURT[key]||key}</div>`).join('');
+  M.forEach((row,i) => { h += `<div class="hl">${v[i].replace(' (retiré)','*')}</div>` + row.map((r,j) => r===null ? '<div>—</div>' : `<div class="cc${S.ci===i&&S.cj===j?' sel':''}" data-i="${i}" data-j="${j}" role="button" tabindex="0" style="${cell(r)}" title="Voir le nuage : ${v[i]} × ${v[j]}">${f2(r)}</div>`).join(''); });
+  hm.innerHTML = h;
+  scatter();
+  const w = {}; D.poids.filter(p=>p.g===S.cg).forEach(p => w[p.key] = p.v);
+  const crit = G.keys.map((key,i) => ({key, n:v[i], r:M[0][i]})).slice(1).sort((a,b)=>Math.abs(b.r)-Math.abs(a.r));
+  const pairs = [];
+  for (let i=1;i<k;i++) for (let j=i+1;j<k;j++) if (M[i][j]!==null && Math.abs(M[i][j])>=.7) pairs.push(`${v[i]} et ${v[j]} (r = ${f2(M[i][j])})`);
+  $('cexp').innerHTML = `<h3>Lecture · ${S.cg} (${G.nb} centres)</h3>
+    <ul>${crit.map(c => `<li><b>${c.n}</b> : lien ${force(c.r)} avec l'encaissement (r = ${f2(c.r)})${w[c.key]!==undefined ? ` <span class="tag">poids ${Math.round(w[c.key])} %</span>` : c.key==='nb_abonnes' ? ' <span class="tag">retiré du modèle</span>' : ''}</li>`).join('')}</ul>
+    ${pairs.length ? `<p class="note" style="margin-top:12px"><b>Critères qui disent la même chose</b> (r ≥ 0,70 entre eux) : ${pairs.join(' ; ')}. Le modèle garde surtout celui qui explique le mieux l'encaissement, l'autre peut recevoir un poids faible ou nul.</p>` : ''}
+    <p class="note">Une corrélation mesure un lien deux à deux ; le poids mesure ce qu'un critère apporte <b>en plus</b> des autres. Un critère très corrélé peut donc avoir un petit poids.${v.some(n=>n.includes('retiré'))?' * Nb abonnés : retiré car il répète le CA.':''}</p>`;
+}
+
+const fk = v => v >= 1e6 ? (v/1e6).toLocaleString('fr-FR',{maximumFractionDigits:1}) + ' M' : Math.round(v/1e3) + ' k';
+const badge = (cur, prev) => { if (!prev) return '<span class="bd fl">—</span>'; const d = cur/prev - 1, a = Math.abs(d)*100;
+  const cls = a < 10 ? 'fl' : d > 0 ? 'up' : a < 30 ? 'md' : 'dn';
+  return `<span class="bd ${cls}">${d>0?'+':'−'}${a.toFixed(1).replace('.',',')} %</span>`; };
+function fiche(){
+  const all = S.cs === '__ALL__';
+  const r = all ? null : (R.find(x => x.c.c === S.cs) || R[0]);
+  if (!all) S.cs = r.c.c; $('csel').value = S.cs;
+  const i26 = D.mois12.map((m,i) => m.startsWith(D.mois_obj.slice(0,4)) ? i : -1).filter(i => i >= 0);
+  const serie = all ? nat : r.c.m12, vals = i26.map(i => serie[i]), mo = i26.map(i => D.mois12[i]);
+  const prev = i26.map(i => i > 0 ? serie[i-1] : null);
+  const obj = all ? R.reduce((a,x)=>a+x.o,0) : r.o, moy = all ? MOY : r.c.moy, yr = vals.reduce((a,b)=>a+b,0);
+  const nom = all ? 'tous les centres' : `centre ${r.c.c} ${r.c.n}`, mObj = ML[+D.mois_obj.slice(5,7)-1];
+  $('evt').textContent = `Encaissé par mois en ${D.mois_obj.slice(0,4)} · ${nom}`;
+  $('evy').textContent = fmt(yr) + ' MRU';
+  $('ck').innerHTML = (all ? [['Moyenne mensuelle 12 mois', fmt(moy)], ['Meilleur mois', fmt(REC)], ['Centres', R.length], [`Objectif ${mObj}`, fmt(obj)]]
+    : [['Moyenne 12 mois', fmt(moy)], ['Pic 2026 retenu', fmt(r.pic)], [`Minimum (${f2(S.coef)} × Pic)`, fmt(r.fl)], [`Objectif ${mObj}`, fmt(obj)]]).map(a => `<div>${a[0]}<b>${a[1]}</b></div>`).join('');
+  const s = $('chC'), W = s.clientWidth, H = s.clientHeight;
+  if (W) {
+    const small = W < 560, n = vals.length + 1, m = {l: small?36:52, r: small?14:30, t: 30, b: small?44:52}, iw = W-m.l-m.r, ih = H-m.t-m.b;
+    const vmax = Math.max(obj, ...vals)*1.15, y = v => m.t + ih - ih*v/vmax, x = i => m.l + iw*i/(n-1);
+    const P = vals.map((v,i) => [x(i), y(v)]);
+    const curve = pts => { let d = `M${pts[0][0]},${pts[0][1]}`; for (let i=0;i<pts.length-1;i++){ const p0=pts[i-1]||pts[i], p1=pts[i], p2=pts[i+1], p3=pts[i+2]||p2;
+      d += ` C${p1[0]+(p2[0]-p0[0])/6},${p1[1]+(p2[1]-p0[1])/6} ${p2[0]-(p3[0]-p1[0])/6},${p2[1]-(p3[1]-p1[1])/6} ${p2[0]},${p2[1]}`; } return d; };
+    let g = `<defs><linearGradient id="ar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a9d8f" stop-opacity=".32"/><stop offset="1" stop-color="#2a9d8f" stop-opacity=".02"/></linearGradient></defs>`;
+    const st = vmax > 4e6 ? (vmax > 40e6 ? 50e6 : vmax > 15e6 ? 5e6 : 1e6) : vmax > 400e3 ? 100e3 : vmax > 150e3 ? 50e3 : 25e3;
+    for (let t=0; t<=vmax; t+=st) g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${m.l-8}" y="${y(t)+4}" text-anchor="end" font-size="11" fill="var(--mute)">${t? fk(t) : 0}</text>`;
+    g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(moy)}" y2="${y(moy)}" stroke="var(--mute)" stroke-dasharray="3 5" opacity=".7"/>`;
+    if (!small) g += `<text x="${W-m.r}" y="${y(moy)-6}" text-anchor="end" font-size="11" fill="var(--mute)">moyenne ${fk(moy)}</text>`;
+    const d = curve(P);
+    g += `<path d="${d} L${P.at(-1)[0]},${y(0)} L${P[0][0]},${y(0)} Z" fill="url(#ar)"/><path d="${d}" fill="none" stroke="#14786f" stroke-width="3"/>`;
+    g += `<line x1="${P.at(-1)[0]}" y1="${P.at(-1)[1]}" x2="${x(n-1)}" y2="${y(obj)}" stroke="#c9a227" stroke-width="2.5" stroke-dasharray="7 6"/>`;
+    const imax = vals.indexOf(Math.max(...vals));
+    g += `<line id="gl" x1="0" x2="0" y1="${m.t}" y2="${y(0)}" stroke="#c9a227" stroke-width="1.5" style="opacity:0"/>`;
+    P.forEach(([px,py],i) => { g += `<circle class="pt" cx="${px}" cy="${py}" r="6" fill="var(--paper)" stroke="#14786f" stroke-width="3"/>`;
+      if (i === imax) g += `<text x="${px}" y="${py-14}" text-anchor="middle" font-size="12" font-weight="800" fill="var(--teal)">${fk(vals[i])}</text>`;
+      const lb = small ? MC[+mo[i].slice(5,7)-1].charAt(0).toUpperCase() : MC[+mo[i].slice(5,7)-1];
+      g += `<text x="${px}" y="${H-m.b+18}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--ink)">${lb}</text>`;
+      if (!small && prev[i]) { const dd = vals[i]/prev[i]-1, a = Math.abs(dd)*100, col = a<10?'#8a8f94':dd>0?'#2a9d8f':a<30?'#e8a33d':'#d64545';
+        g += `<text x="${px}" y="${H-m.b+36}" text-anchor="middle" font-size="11" font-weight="600" fill="${col}">${dd>0?'▲':'▼'} ${a.toFixed(1).replace('.',',')} %</text>`; } });
+    g += `<circle class="pt" cx="${x(n-1)}" cy="${y(obj)}" r="7" fill="var(--paper)" stroke="#c9a227" stroke-width="3"/>`;
+    g += `<text x="${x(n-1)}" y="${y(obj)-14}" text-anchor="middle" font-size="12" font-weight="800" fill="#a8841a">${fk(obj)}</text>`;
+    g += `<text x="${x(n-1)}" y="${H-m.b+18}" text-anchor="middle" font-size="12" font-weight="800" fill="#a8841a">${small?'Obj.':'obj. '+MC[+D.mois_obj.slice(5,7)-1]}</text>`;
+    s.innerHTML = g;
+    const pc = (a,b) => b ? `${a>=b?'+':'−'}${Math.abs((a/b-1)*100).toFixed(1).replace('.',',')} %` : '—';
+    const rows = vals.map((v,i) => `<b>${ML[+mo[i].slice(5,7)-1]} ${mo[i].slice(0,4)}</b><div><span>Encaissé</span><span>${fmt(v)}</span></div><div><span>vs mois précédent</span><span>${pc(v,prev[i])}</span></div><div><span>vs moyenne</span><span>${pc(v,moy)}</span></div><div><span>Objectif ${mObj} vs ce mois</span><span>${pc(obj,v)}</span></div>`);
+    rows.push(`<b>Objectif ${mObj}</b><div><span>Montant</span><span>${fmt(obj)}</span></div><div><span>vs octobre</span><span>${pc(obj,vals.at(-1))}</span></div><div><span>vs moyenne</span><span>${pc(obj,moy)}</span></div><div><span>vs meilleur mois</span><span>${pc(obj,Math.max(...vals))}</span></div>`);
+    survolEvo(s, {xs:[...P.map(p=>p[0]), x(n-1)], ys:[...P.map(p=>p[1]), y(obj)], rows});
+  }
+  const evo = vals.length > 1 && vals[0] ? vals.at(-1)/vals[0]-1 : 0;
+  const eb = evo ? `<span class="bd ${Math.abs(evo)<.1?'fl':evo>0?'up':'dn'}">${evo>0?'+':'−'}${Math.abs(evo*100).toFixed(1).replace('.',',')} %</span>` : '';
+  $('etab').innerHTML = `<thead><tr><th>Centre</th>${mo.map(x => `<th>${MC[+x.slice(5,7)-1]} ${x.slice(0,4)}</th>`).join('')}<th>Total ${D.mois_obj.slice(0,4)}</th><th>Objectif ${mObj}</th></tr></thead>
+    <tbody><tr><td><b>${all ? 'Tous' : r.c.c}</b><span style="color:var(--mute);font-size:12px">${all ? R.length + ' centres' : r.c.n}</span></td>${vals.map((v,i) => `<td><b>${fmt(v)}</b>${badge(v, prev[i])}</td>`).join('')}<td><b>${fmt(yr)}</b></td><td class="ob"><b>${fmt(obj)}</b>${badge(obj, vals.at(-1))}</td></tr></tbody>`;
+  if (all) { $('cv2').innerHTML = `Ensemble des ${R.length} centres : objectif de <b>${fmt(obj)}</b> pour ${mObj}, soit ${pct(obj/REC-1)} par rapport au meilleur mois des 12 derniers mois (${fM(REC)} M).`; return; }
+  const lim = r.fl > r.mod + .5;
+  $('cv2').innerHTML = `<b>${r.c.n}</b> (${r.c.z}) : le modèle propose <b>${fmt(r.mod)}</b>, le minimum ${f2(S.coef)} × Pic est <b>${fmt(r.fl)}</b>. ` +
+    (lim ? `C'est donc <b>le minimum × Pic</b> qui fixe l'objectif.` : `Le modèle dépasse déjà le minimum : c'est <b>le modèle</b> qui fixe l'objectif.`) +
+    ` Objectif <b>${fmt(r.o)}</b>, soit ${pct(r.o/r.c.moy-1)} par rapport à sa moyenne.`;
+}
+
+function scatter(){
+  const G = D.corr[S.cg], k = G.vars.length; if (S.ci>=k) S.ci=0; if (S.cj>=k||S.cj===S.ci) S.cj = S.ci===0?1:0;
+  const i = S.ci, j = S.cj, pts = G.pts.map(p => ({c:p[0], n:p[1], x:p[2+j], y:p[2+i]})).filter(p => isFinite(p.x) && isFinite(p.y));
+  const r = G.centres[i][j], vx = G.vars[j], vy = G.vars[i];
+  $('sct').textContent = `${vy} selon ${vx} · moyenne de chaque centre`;
+  const s = $('chS'), W = s.clientWidth, H = s.clientHeight;
+  if (W) {
+    const m = {l:56, r:14, t:12, b:40}, iw = W-m.l-m.r, ih = H-m.t-m.b;
+    const xs = pts.map(p=>p.x), ys = pts.map(p=>p.y), px_ = (Math.max(...xs)-Math.min(...xs))*.05||1, py_ = (Math.max(...ys)-Math.min(...ys))*.06||1, x0 = Math.min(...xs)-px_, x1 = Math.max(...xs)+px_, y0 = Math.min(...ys)-py_, y1 = Math.max(...ys)+py_;
+    const X = v => m.l + iw*(v-x0)/((x1-x0)||1), Y = v => m.t + ih - ih*(v-y0)/((y1-y0)||1);
+    const mx = xs.reduce((a,b)=>a+b,0)/xs.length, my = ys.reduce((a,b)=>a+b,0)/ys.length;
+    let sxy=0, sxx=0; pts.forEach(p => { sxy += (p.x-mx)*(p.y-my); sxx += (p.x-mx)**2; }); const b = sxx ? sxy/sxx : 0;
+    const ff = v => Math.abs(v) >= 1e6 ? (v/1e6).toLocaleString('fr-FR',{maximumFractionDigits:1})+' M' : Math.abs(v) >= 1e3 ? Math.round(v/1e3)+' k' : (Math.round(v*10)/10).toLocaleString('fr-FR');
+    let g = '';
+    [0,.5,1].forEach(q => { const yv = y0+(y1-y0)*q, xv = x0+(x1-x0)*q;
+      g += `<line x1="${m.l}" x2="${W-m.r}" y1="${Y(yv)}" y2="${Y(yv)}" stroke="var(--line)"/><text x="${m.l-6}" y="${Y(yv)+4}" text-anchor="end" font-size="11" fill="var(--mute)">${ff(yv)}</text>`;
+      g += `<text x="${X(xv)}" y="${H-m.b+16}" text-anchor="middle" font-size="11" fill="var(--mute)">${ff(xv)}</text>`; });
+    g += `<text x="${m.l+iw/2}" y="${H-6}" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">${vx}</text>`;
+    g += `<line x1="${X(x0)}" y1="${Y(my+b*(x0-mx))}" x2="${X(x1)}" y2="${Y(my+b*(x1-mx))}" stroke="#c9a227" stroke-width="2" stroke-dasharray="6 5"/>`;
+    pts.forEach((p,q) => g += `<circle class="hz" data-q="${q}" cx="${X(p.x)}" cy="${Y(p.y)}" r="6" fill="#2a9d8f" fill-opacity=".55" stroke="#0b4f4a" stroke-width="1.5"/>`);
+    s.innerHTML = g;
+    const tip = $('tipS');
+    s.onmousemove = s.onclick = e => { const el = e.target.closest('circle.hz'); s.querySelectorAll('circle.hz').forEach(c => c.setAttribute('r', 6));
+      if (!el) { tip.classList.remove('on'); return; } el.setAttribute('r', 9); const p = pts[+el.dataset.q];
+      tip.innerHTML = `<b>${p.n}</b><div><span>${vy}</span><span>${fmt(p.y)}</span></div><div><span>${vx}</span><span>${fmt(p.x)}</span></div>`;
+      tip.style.left = el.getAttribute('cx')+'px'; tip.style.top = (+el.getAttribute('cy')-12)+'px'; tip.classList.add('on'); };
+    s.onmouseleave = () => tip.classList.remove('on');
+  }
+  const a = Math.abs(r);
+  const lecture = a >= .8 ? 'les centres qui ont beaucoup de l\'un ont presque toujours beaucoup de l\'autre : les points suivent de près la ligne.'
+    : a >= .6 ? 'la tendance est nette, mais plusieurs centres s\'écartent de la ligne.'
+    : a >= .4 ? 'la tendance existe, mais les points sont assez dispersés.' : 'pas de tendance claire : les points sont dispersés.';
+  $('scx').innerHTML = `<h3>r = ${f2(r)} · lien ${force(r)}${r<0?' et inverse':''}</h3>
+    <p class="note" style="margin-top:6px">Chaque point est un centre (${pts.length} centres) : sa moyenne de <b>${vx}</b> en abscisse et de <b>${vy}</b> en ordonnée. La ligne dorée est la tendance. Ici, ${lecture}</p>
+    <p class="note">Survolez ou cliquez un point pour voir le centre. Les plus éloignés de la ligne encaissent plus (au-dessus) ou moins (en dessous) que ce que leur niveau de « ${vx} » laisserait attendre.</p>`;
+}
+
+function survolEvo(svg, info){
+  const tip = $('tipC');
+  const show = e => {
+    const rect = svg.getBoundingClientRect(), mx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    let k = 0, best = 1e9; info.xs.forEach((x,q) => { const d = Math.abs(x-mx); if (d < best) { best = d; k = q; } });
+    svg.querySelectorAll('.pt').forEach((c,q) => c.setAttribute('r', q===k ? 9 : 6));
+    const gl = svg.querySelector('#gl'); gl.setAttribute('x1', info.xs[k]); gl.setAttribute('x2', info.xs[k]); gl.style.opacity = 1;
+    tip.innerHTML = info.rows[k]; tip.style.left = info.xs[k]+'px'; tip.style.top = (info.ys[k]-14)+'px'; tip.classList.add('on');
+  };
+  svg.onmousemove = show; svg.onclick = show; svg.ontouchstart = show;
+  svg.onmouseleave = () => { tip.classList.remove('on'); svg.querySelectorAll('.pt').forEach(c => c.setAttribute('r',6)); const gl = svg.querySelector('#gl'); if (gl) gl.style.opacity = 0; };
+}
+
+function table(){
+  const q = $('q').value.trim().toLowerCase(), zf = $('zf').value;
+  $('thobj').textContent = 'Objectif ' + ML[+D.mois_obj.slice(5,7)-1] + ' ' + D.mois_obj.slice(0,4);
+  let h = '', G = 0;
+  zones.filter(z => !zf || z===zf).forEach(z => {
+    const rows = R.filter(r => r.c.z===z && (!q || r.c.n.toLowerCase().includes(q) || r.c.c.includes(q))).sort((a,b)=>b.o-a.o);
+    if (!rows.length) return;
+    const T = rows.reduce((a,r)=>a+r.o,0); G += T;
+    const cl = S.closed.has(z) && !q;
+    h += `<tr class="zh" data-z="${z}"><td colspan="3">${cl?'▸':'▾'} ${z} · ${rows.length} centre${rows.length>1?'s':''}</td></tr>`;
+    if (!cl) rows.forEach(r => h += `<tr class="cl" data-c="${r.c.c}"><td>${r.c.c}</td><td>${r.c.n}</td><td class="ob">${fmt(r.o)}</td></tr>`);
+    h += `<tr class="zt"><td></td><td>Total ${z}</td><td>${fmt(T)}</td></tr>`;
+  });
+  h += `<tr class="gt"><td></td><td>TOTAL GÉNÉRAL</td><td>${fmt(G)}</td></tr>`;
+  $('tb').tBodies[0].innerHTML = h;
+  $('tog').textContent = S.closed.size === zones.length ? 'Tout déplier' : 'Tout replier';
+}
+
+function all(){ const msg = calc(); hero(msg); fiche(); table(); }
+function sync(){ $('coef').value = S.coef; $('seuil').value = S.seuil; }
+
+$('ttl').textContent = 'Objectifs d\'encaissement · ' + ML[+D.mois_obj.slice(5,7)-1] + ' ' + D.mois_obj.slice(0,4);
+$('lead').textContent = `Modèle multiniveau SNDE · ${D.centres.length} centres · réglez le coefficient du Pic, tout se recalcule en direct.`;
+zones.forEach(z => $('zf').insertAdjacentHTML('beforeend', `<option>${z}</option>`));
+$('csel').innerHTML = '<option value="__ALL__">Tous les centres</option>' + zones.map(z => `<optgroup label="${z}">` + D.centres.filter(c=>c.z===z).sort((a,b)=>b.moy-a.moy).map(c => `<option value="${c.c}">${c.n}</option>`).join('') + '</optgroup>').join('');
+S.cs = [...D.centres].sort((a,b)=>b.moy-a.moy)[0].c;
+$('coef').addEventListener('input', e => { S.coef = +e.target.value; all(); });
+$('seuil').addEventListener('input', e => { S.seuil = +e.target.value; all(); });
+$('cg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S.cg = b.dataset.g; corr(); } });
+$('cv').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S.cv = b.dataset.v; corr(); } });
+$('hm').addEventListener('click', e => { const c = e.target.closest('.cc'); if (!c) return; let i = +c.dataset.i, j = +c.dataset.j; if (i===j) j = i===0?1:0; S.ci = i; S.cj = j; corr(); });
+$('hm').addEventListener('keydown', e => { if (e.key==='Enter' && e.target.classList.contains('cc')) e.target.click(); });
+$('csel').addEventListener('change', e => { S.cs = e.target.value; fiche(); });
+$('q').addEventListener('input', table); $('zf').addEventListener('change', table);
+$('tb').addEventListener('click', e => {
+  const t = e.target.closest('tr.zh');
+  if (t) { const z = t.dataset.z; S.closed.has(z) ? S.closed.delete(z) : S.closed.add(z); table(); return; }
+  const c = e.target.closest('tr.cl'); if (c) { S.cs = c.dataset.c; location.hash = 'evolution'; }
+});
+$('tog').addEventListener('click', () => { if (S.closed.size === zones.length) S.closed.clear(); else zones.forEach(z => S.closed.add(z)); table(); });
+$('copy').addEventListener('click', async () => {
+  const L = [['Zone','Exp','Centre','Objectif'].join('\t')];
+  zones.forEach(z => R.filter(r=>r.c.z===z).sort((a,b)=>b.o-a.o).forEach(r => L.push([z,r.c.c,r.c.n,Math.round(r.o)].join('\t'))));
+  try { await navigator.clipboard.writeText(L.join('\n')); $('copy').textContent = 'Copié ✓ — collez dans Excel'; }
+  catch(_) { $('copy').textContent = 'Copie refusée par le navigateur'; }
+  setTimeout(() => $('copy').textContent = 'Copier le tableau (pour Excel)', 2500);
+});
+$('foot').textContent = `Données : encaissements ${mlab(D.mois12[0])} → ${mlab(D.mois12.at(-1))}, extraction CRM SNDE. Pour mettre la page à jour : python interface.py.`;
+sync(); poids(); corr(); all();
+new ResizeObserver(() => { fiche(); scatter(); }).observe(document.body);
+const TABS = ['objectifs','evolution','correlations','modele','tableau'];
+function onglet(){ const h = location.hash.slice(1), cur = TABS.includes(h) ? h : 'objectifs';
+  document.querySelectorAll('.tab').forEach(s => s.classList.toggle('on', s.id === cur));
+  document.querySelectorAll('nav a').forEach(a => { const on = a.dataset.t === cur; a.classList.toggle('on', on); a.setAttribute('aria-selected', on); });
+  if (cur === 'evolution') fiche(); if (cur === 'correlations') scatter(); }
+window.addEventListener('hashchange', onglet); onglet();
+}
+</script>
+</body>
+</html>
