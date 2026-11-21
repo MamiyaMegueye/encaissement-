@@ -95,6 +95,35 @@ CENTRES: dict[str, tuple[str, str]] = {
     "108": ("INTERIEUR TRARZA", "TEKANE"),
 }
 
+def _charger_fichier() -> None:
+    """Complète CENTRES avec le fichier Excel « backend/referentiel/centres_par_zone.xlsx »
+    (colonnes ZONE, EXP, CENTRE), s'il existe. Le fichier fait foi : un centre
+    qui y figure remplace celui de la liste ci-dessus. Modifier le fichier puis
+    relancer le backend suffit à ajouter ou corriger un centre."""
+    from pathlib import Path
+    chemin = Path(__file__).resolve().parents[2] / "referentiel" / "centres_par_zone.xlsx"
+    if not chemin.exists():
+        return
+    try:
+        from openpyxl import load_workbook
+        feuille = load_workbook(chemin, read_only=True, data_only=True).worksheets[0]
+        lignes = feuille.iter_rows(values_only=True)
+        entete = [str(v or "").strip().upper() for v in next(lignes)]
+        i_zone, i_exp, i_centre = entete.index("ZONE"), entete.index("EXP"), entete.index("CENTRE")
+        for ligne in lignes:
+            zone, exp, nom = ligne[i_zone], ligne[i_exp], ligne[i_centre]
+            if zone is None or exp is None:
+                continue
+            code = str(int(exp) if isinstance(exp, float) else exp).strip()
+            propre = lambda v: " ".join(str(v or "").replace("\xa0", " ").split())
+            CENTRES[code] = (propre(zone).upper(), propre(nom))
+    except Exception as exc:  # fichier mal formé : on garde la liste intégrée
+        import logging
+        logging.getLogger("controle.zones").warning("Fichier des zones illisible (%s) : %s", chemin, exc)
+
+
+_charger_fichier()
+
 ZONES_NOUAKCHOTT = ("NKTT NORD", "NKTT OUEST", "NKTT SUD")
 ZONE_NOUADHIBOU = "NOUADHIBOU"
 

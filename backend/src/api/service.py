@@ -1392,8 +1392,12 @@ def detail_chutes_secteur(secteur: str) -> dict:
 # du jour ; le cumul du 1er au jour J est donné à côté.
 import calendar as _calendrier
 
-SEUIL_ALERTE_CHUTE = -15.0      # % : alerte rouge (baisse de 15 % ou plus)
-SEUIL_ALERTE_BAISSE = -15.0     # % : même seuil que la chute (plus de catégorie orange)
+# Centres jamais signalés dans les alertes (Alertes secteurs, pastille, rapport
+# de 23 h, Compa enca versement) : direction, zone administrative, Khadamaty.
+CENTRES_EXCLUS_ALERTES = {"1", "2", "56", "57", "63"}
+
+SEUIL_ALERTE_CHUTE = -40.0      # % : alerte rouge (baisse de 40 % ou plus)
+SEUIL_ALERTE_BAISSE = -40.0     # % : même seuil que la chute (plus de catégorie orange)
 MONTANT_MIN_REFERENCE = 10000.0  # MRU : seuls les secteurs dont l'encaissé de référence est >= 10 000 sont comparés
 
 ALERTE_CHUTE = "SECT_CHUTE"
@@ -1504,7 +1508,8 @@ def _somme(montants: dict, sect: str, d1: date, d2: date) -> float:
 
 
 def _periode(d1: date, d2: date) -> str:
-    return f"{d1:%d}-{d2:%d/%m/%Y}"
+    """« 01 au 20/11/2026 »."""
+    return f"{d1:%d} au {d2:%d/%m/%Y}"
 
 
 def _ligne_alerte(p: dict, jour: date, montants: dict, agreg: dict | None = None) -> dict:
@@ -1596,6 +1601,7 @@ def _alertes_secteurs(jour: date | None = None, centre: str | None = None, zone:
     log.info("alertes_secteurs %s : données prêtes (%.1f s)", jour, time.monotonic() - t0)
     secteurs = store.tous_secteurs(jour.year, jour.month, debut, jour)
     log.info("alertes_secteurs %s : %s secteurs (%.1f s)", jour, len(secteurs), time.monotonic() - t0)
+    secteurs = [p for p in secteurs if str(p["centre"]).strip() not in CENTRES_EXCLUS_ALERTES]
     if centre:
         secteurs = [p for p in secteurs if str(p["centre"]) == centre]
     if zone:
@@ -1652,20 +1658,20 @@ DOSSIER_RAPPORTS = Path(__file__).resolve().parents[2] / "sorties_alertes"
 def _libelle_ref(lignes: list[dict]) -> str:
     """Période de référence pour les en-têtes : unique si tous les secteurs ont
     le même mois de référence, sinon les deux périodes (M-1 et M-2)."""
-    periodes = sorted({l["periode_ref"] for l in lignes}, reverse=True)
-    return " ou ".join(periodes) if periodes else "réf."
+    periodes = sorted({l["periode_ref"] for l in lignes}, key=lambda p: (p[-4:], p[-7:-5]), reverse=True)
+    return ("du " + " ou du ".join(periodes)) if periodes else "de référence"
 
 
 def _colonnes_rapport(jour: date, lignes: list[dict]) -> list[tuple]:
-    p = f"{jour.replace(day=1):%d}-{jour:%d/%m/%Y}"
+    p = "du " + _periode(jour.replace(day=1), jour)
     r = _libelle_ref(lignes)
     return [
         ("zone", "Zone", "texte"),
         ("centre", "Centre", "texte"),
         ("nom_centre", "Nom du centre", "texte"),
         ("secteur", "Secteur", "texte"),
-        ("cumul_ref", f"Encaissé {r}", "montant"),
-        ("cumul", f"Encaissé {p}", "montant"),
+        ("cumul_ref", f"Encaissements {r}", "montant"),
+        ("cumul", f"Encaissements {p}", "montant"),
         ("ecart", "Écart", "montant"),
         ("variation_pct", "Variation (%)", "pct"),
         ("nb_recus_ref", f"Reçus {r}", "entier"),
@@ -1681,6 +1687,12 @@ def rapport_chutes(jour: date | None = None, centre: str | None = None, zone: st
     data = alertes_secteurs(jour, centre, zone)
     jour = date.fromisoformat(data["jour"])
     chutes = [l for l in data["lignes"] if l["statut_code"] == ALERTE_CHUTE]
+    # Regroupé par zone (Nouakchott, Nouadhibou, puis l'intérieur ; sans zone à la
+    # fin), puis à l'intérieur d'une zone de la plus forte perte à la plus faible.
+    ordre_zones = ["NKTT NORD", "NKTT OUEST", "NKTT SUD", "NOUADHIBOU", "INTERIEUR NORD",
+                   "INTERIEUR TRARZA", "INTERIEUR SUD", "INTERIEUR EST"]
+    chutes.sort(key=lambda l: (ordre_zones.index(l["zone"]) if l["zone"] in ordre_zones else len(ordre_zones),
+                               l["zone"] or "~", l["ecart"]))
     contenu = exports.classeur_beige(f"Chutes {jour:%d-%m-%Y}", _colonnes_rapport(jour, chutes), chutes)
     return contenu, f"chutes_secteur_{jour.isoformat()}.xlsx"
 
@@ -1734,3 +1746,115 @@ def secteurs_planifies_annee(annee: int, centre: str | None = None) -> dict:
 def marquer_secteurs_vus(jour: date | None, sect_ids: list[str]):
     """Valide (« c'est bien ») les secteurs en chute du jour : le bandeau ne les montre plus."""
     store.marquer_secteurs_vus(_jour_alerte(jour), sect_ids)
+
+
+
+# --------------------------------------------------------------------------- comparaison encaissements / versements (année)
+# Les espèces encaissées doivent toutes être versées. Pour chaque centre et
+# chaque mois de l'année : espèces encaissées, versements validés, écart.
+# Signalé : un mois clos avec des espèces encaissées et aucun versement, et un
+# écart cumulé (encaissé − versé depuis janvier) au-delà de SEUIL_ECART_COMPA.
+SEUIL_ECART_COMPA = 1000.0        # MRU : écart cumulé à partir duquel le centre est signalé
+MIN_ESPECES_MOIS_COMPA = 1000.0   # MRU : en dessous, un mois sans versement n'est pas signalé
+SEUIL_GRAND_ECART_COMPA = 100000.0  # MRU : écart (non versé) à partir duquel la ligne est en rouge
+_DUREE_CACHE_COMPA = 600          # s : la lecture Oracle de l'année est gardée 10 min
+_NOMS_MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
+_cache_compa: dict = {}
+_verrou_compa = threading.Lock()
+
+
+def _lignes_compa(annee: int) -> list[dict]:
+    with _verrou_compa:
+        cache = _cache_compa.get(annee)
+        if cache and time.monotonic() - cache[0] < _DUREE_CACHE_COMPA:
+            return cache[1]
+        params = {"d1": datetime(annee, 1, 1), "d2": datetime(annee + 1, 1, 1)}
+        lignes = db.fetch_all(queries.sql_compa_mensuel(get_settings().oracle_schema), params, delai_ms=300_000)
+        _cache_compa[annee] = (time.monotonic(), lignes)
+        return lignes
+
+
+def compa_versements(annee: int | None = None, centre: str | None = None, zone: str | None = None) -> dict:
+    """Par centre : espèces encaissées et versées sur l'année, mois par mois."""
+    aujourd_hui = date.today()
+    annee = annee or aujourd_hui.year
+    dernier_mois = 12 if annee < aujourd_hui.year else aujourd_hui.month
+    # Mois clos : un mois sans versement n'est signalé qu'une fois terminé.
+    dernier_clos = 12 if annee < aujourd_hui.year else aujourd_hui.month - 1
+    choix_zones = {z.strip() for z in (zone or "").split(",") if z.strip()}
+    centre = str(centre).strip() if centre else None
+
+    par_centre: dict[str, dict] = {}
+    for l in _lignes_compa(annee):
+        c = str(l["centre"]).strip()
+        if c in CENTRES_EXCLUS_ALERTES or (centre and c != centre):
+            continue
+        z = zones.zone_du_centre(c)
+        if choix_zones and z not in choix_zones:
+            continue
+        p = par_centre.setdefault(c, {"centre": c, "nom_centre": l["nom_centre"], "zone": z, "mois": {}})
+        p["mois"][int(l["mois"])] = l
+
+    resultat = []
+    for p in par_centre.values():
+        mois, cumul_enc, cumul_vers, sans_versement = [], 0.0, 0.0, []
+        for m in range(1, dernier_mois + 1):
+            l = p["mois"].get(m, {})
+            enc, vers = float(l.get("especes") or 0), float(l.get("verse") or 0)
+            cumul_enc += enc
+            cumul_vers += vers
+            sans = m <= dernier_clos and enc >= MIN_ESPECES_MOIS_COMPA and vers == 0
+            if sans:
+                sans_versement.append(_NOMS_MOIS[m - 1])
+            mois.append({
+                "mois": f"{annee}-{m:02d}",
+                "libelle_mois": f"{_NOMS_MOIS[m - 1]} {annee}",
+                "especes": round(enc, 2),
+                "verse": round(vers, 2),
+                "ecart": round(enc - vers, 2),
+                "verse_non_valide": round(float(l.get("verse_non_valide") or 0), 2),
+                "nb_recus": int(l.get("nb_recus") or 0),
+                "nb_versements": int(l.get("nb_versements") or 0),
+                "cumul_especes": round(cumul_enc, 2),
+                "cumul_verse": round(cumul_vers, 2),
+                "ecart_cumule": round(cumul_enc - cumul_vers, 2),
+                "sans_versement": sans,
+                "statut": "Aucun versement" if sans else ("Mois en cours" if m > dernier_clos else ""),
+            })
+        ecart = cumul_enc - cumul_vers
+        anomalies = []
+        if sans_versement:
+            anomalies.append(f"{len(sans_versement)} mois sans versement")
+        if ecart >= SEUIL_ECART_COMPA:
+            anomalies.append("Espèces non versées")
+        elif ecart <= -SEUIL_ECART_COMPA:
+            anomalies.append("Sur-versement")
+        code = ("COMPA_SANS_VERSEMENT" if sans_versement else
+                "COMPA_NON_VERSE" if ecart >= SEUIL_ECART_COMPA else
+                "COMPA_SUR_VERSE" if ecart <= -SEUIL_ECART_COMPA else "COMPA_OK")
+        resultat.append({
+            "zone": p["zone"],
+            "centre": p["centre"],
+            "nom_centre": p["nom_centre"],
+            "especes": round(cumul_enc, 2),
+            "verse": round(cumul_vers, 2),
+            "ecart": round(ecart, 2),
+            "ecart_pct": _pct(ecart, cumul_enc) if cumul_enc else None,
+            "nb_mois_sans_versement": len(sans_versement),
+            "mois_sans_versement": ", ".join(sans_versement),
+            "statut": "; ".join(anomalies) or "Conforme",
+            "statut_code": code,
+            # Couleur de la ligne : rouge = gros écart non versé, orange = mois sans versement.
+            "couleur": ("rouge" if ecart >= SEUIL_GRAND_ECART_COMPA else "orange" if sans_versement else ""),
+            "detail": mois,
+        })
+    ordre = ["COMPA_SANS_VERSEMENT", "COMPA_NON_VERSE", "COMPA_SUR_VERSE", "COMPA_OK"]
+    resultat.sort(key=lambda r: (ordre.index(r["statut_code"]), -abs(r["ecart"]), _cle_centre(r["centre"])))
+    return {
+        "annee": annee,
+        "seuil_ecart": SEUIL_ECART_COMPA,
+        "seuil_grand_ecart": SEUIL_GRAND_ECART_COMPA,
+        "nb_centres": len(resultat),
+        "nb_anomalies": sum(1 for r in resultat if r["statut_code"] != "COMPA_OK"),
+        "lignes": resultat,
+    }

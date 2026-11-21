@@ -7,16 +7,17 @@ import DataTable from './DataTable.jsx';
 /** Mêmes colonnes que le rapport chutes_secteur_AAAA-MM-JJ.xlsx. En-têtes datés :
  *  période en cours, et période de référence (une seule, ou M-1 « ou » M-2). */
 function colonnesChutes(periode, lignes) {
-  const refs = [...new Set(lignes.map((l) => l.periode_ref))].sort().reverse();
-  const r = refs.length ? refs.join(' ou ') : 'réf.';
-  const p = periode || '';
+  // « 01 au 20/10/2026 » : tri par mois (le plus récent d’abord).
+  const refs = [...new Set(lignes.map((l) => l.periode_ref))].sort((a, b) => (b.slice(-4) + b.slice(-7, -5)).localeCompare(a.slice(-4) + a.slice(-7, -5)));
+  const r = refs.length ? `du ${refs.join(' ou du ')}` : 'de référence';
+  const p = periode ? `du ${periode}` : '';
   return [
     { cle: 'zone', libelle: 'Zone', type: 'texte' },
     { cle: 'centre', libelle: 'Centre', type: 'texte' },
     { cle: 'nom_centre', libelle: 'Nom du centre', type: 'texte' },
     { cle: 'secteur', libelle: 'Secteur', type: 'texte' },
-    { cle: 'cumul_ref', libelle: `Encaissé ${r}`, type: 'montant', total: true },
-    { cle: 'cumul', libelle: `Encaissé ${p}`, type: 'montant', total: true },
+    { cle: 'cumul_ref', libelle: `Encaissements ${r}`, type: 'montant', total: true },
+    { cle: 'cumul', libelle: `Encaissements ${p}`, type: 'montant', total: true },
     { cle: 'ecart', libelle: 'Écart', type: 'montant', total: true },
     { cle: 'variation_pct', libelle: 'Variation (%)', type: 'pct' },
     { cle: 'nb_recus_ref', libelle: `Reçus ${r}`, type: 'entier' },

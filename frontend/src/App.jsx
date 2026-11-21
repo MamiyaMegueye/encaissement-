@@ -7,6 +7,7 @@ import { useLive } from './hooks/useLive.js';
 import Tarifs from './components/Tarifs.jsx';
 import Evolution from './components/Evolution.jsx';
 import FiltreZones from './components/FiltreZones.jsx';
+import CompaVersements from './components/CompaVersements.jsx';
 import AlertesSecteurs, { BandeauAlertesSecteurs } from './components/AlertesSecteurs.jsx';
 import DataTable from './components/DataTable.jsx';
 import logoSnde from './logo-snde.js';
@@ -114,7 +115,7 @@ function Panneau({ onglet, filtres, version, lignesControle, chargementControle,
             onChange={(e) => setRecherche(e.target.value)}
             aria-label="Rechercher dans le tableau"
           />
-          {onglet.id !== 'tarifs' && onglet.id !== 'alertes' && !evolution && <BoutonsExport jeu={onglet.id} filtres={filtresOnglet} />}
+          {onglet.id !== 'tarifs' && onglet.id !== 'alertes' && onglet.id !== 'compa' && !evolution && <BoutonsExport jeu={onglet.id} filtres={filtresOnglet} />}
         </div>
       </div>
       {onglet.id === 'encaissements' && (
@@ -167,6 +168,8 @@ function Panneau({ onglet, filtres, version, lignesControle, chargementControle,
           onLigne={(l) => onCentre(l.centre)}
           aideLigne="Cliquer pour ne garder que ce centre"
         />
+      ) : onglet.id === 'compa' ? (
+        <CompaVersements filtres={filtres} version={version} recherche={recherche} />
       ) : onglet.id === 'alertes' ? (
         <AlertesSecteurs filtres={filtres} version={version} recherche={recherche} />
       ) : onglet.id === 'tarifs' ? (

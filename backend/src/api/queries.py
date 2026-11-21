@@ -743,3 +743,44 @@ LEFT JOIN pic pc ON pc.SECT_ID = pl.SECT_ID AND pc.annee = pl.ANNEE
                 AND pc.mois = pl.MOIS AND pc.rn = 1
 WHERE pl.rn = 1
 """
+
+
+def sql_compa_mensuel(schema: str) -> str:
+    """Par centre et par mois : espèces encaissées (reçus validés, mode ESPECE,
+    date comptable) et versements d'espèces (S_VERS_ESPECE, date de versement).
+    Paramètres : :d1, :d2 (fin exclue)."""
+    return f"""
+WITH enc AS (
+    SELECT pr.STR_ID, TRUNC(pr.PREC_DATE_COMPTABLE, 'MM') AS mois,
+           SUM(pr.PREC_MNT_PAY) AS especes, COUNT(*) AS nb_recus
+    FROM {schema}.T_PIECE_REC pr
+    JOIN {schema}.S_MODE_PAY mp ON mp.MP_ID = pr.MP_ID
+    WHERE {_RECU_VALIDE}
+      AND UPPER(TRIM(mp.MP_LIBLT)) = 'ESPECE'
+      AND pr.PREC_DATE_COMPTABLE >= :d1 AND pr.PREC_DATE_COMPTABLE < :d2
+    GROUP BY pr.STR_ID, TRUNC(pr.PREC_DATE_COMPTABLE, 'MM')
+),
+vers AS (
+    SELECT v.STR_ID, TRUNC(v.VERS_DATE, 'MM') AS mois,
+           SUM(CASE WHEN v.VERS_FLAG_VLD = 1 AND (v.FLAG_ANNUL IS NULL OR v.FLAG_ANNUL = 0)
+                    THEN v.VERS_MNT_VERS ELSE 0 END) AS verse,
+           SUM(CASE WHEN (v.VERS_FLAG_VLD IS NULL OR v.VERS_FLAG_VLD != 1)
+                     AND (v.FLAG_ANNUL IS NULL OR v.FLAG_ANNUL = 0)
+                    THEN v.VERS_MNT_VERS ELSE 0 END) AS verse_non_valide,
+           SUM(CASE WHEN v.VERS_FLAG_VLD = 1 AND (v.FLAG_ANNUL IS NULL OR v.FLAG_ANNUL = 0)
+                    THEN 1 ELSE 0 END) AS nb_versements
+    FROM {schema}.S_VERS_ESPECE v
+    WHERE v.VERS_DATE >= :d1 AND v.VERS_DATE < :d2
+    GROUP BY v.STR_ID, TRUNC(v.VERS_DATE, 'MM')
+),
+cles AS (SELECT STR_ID, mois FROM enc UNION SELECT STR_ID, mois FROM vers)
+SELECT TRIM(s.STR_CODE) AS centre, s.STR_LIB_LT AS nom_centre,
+       EXTRACT(MONTH FROM k.mois) AS mois,
+       NVL(e.especes, 0) AS especes, NVL(e.nb_recus, 0) AS nb_recus,
+       NVL(v.verse, 0) AS verse, NVL(v.verse_non_valide, 0) AS verse_non_valide,
+       NVL(v.nb_versements, 0) AS nb_versements
+FROM cles k
+JOIN {schema}.S_STRUCTURE s ON s.STR_ID = k.STR_ID
+LEFT JOIN enc e  ON e.STR_ID = k.STR_ID AND e.mois = k.mois
+LEFT JOIN vers v ON v.STR_ID = k.STR_ID AND v.mois = k.mois
+"""

@@ -37,6 +37,10 @@ export const ONGLETS = [
     description: 'Reçus de caisse annulés sur la période.',
   },
   {
+    id: 'compa',
+    titre: 'Compa enca versement',
+  },
+  {
     id: 'alertes',
     titre: 'Alertes secteurs',
     description:
@@ -354,6 +358,10 @@ export const GRAVITE = {
   AUTRE_BANQUE: 'attention',
   MONTANT_DIFFERENT: 'serieux',
   NON_RETROUVE: 'critique',
+  COMPA_SANS_VERSEMENT: 'critique',
+  COMPA_NON_VERSE: 'critique',
+  COMPA_SUR_VERSE: 'serieux',
+  COMPA_OK: 'bon',
   SECT_CHUTE: 'critique',
   SECT_BAISSE: 'serieux',
   SECT_NORMAL: 'bon',

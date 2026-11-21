@@ -408,6 +408,13 @@ def export_alertes_secteurs(jour: date | None = _JOUR_ALERTE, centre: str | None
                     headers={"Content-Disposition": f'attachment; filename="{nom}"'})
 
 
+@app.get("/api/compa_versements")
+def get_compa_versements(annee: int | None = Query(None, ge=2000, le=2100), centre: str | None = _CENTRE,
+                         zone_centre: str | None = Query(None, max_length=300)):
+    """Par centre : espèces encaissées et versées sur l'année, mois sans versement et écart."""
+    return _json(service.compa_versements(annee, _centre(centre), zone_centre))
+
+
 @app.get("/api/alertes_secteurs/planifies")
 def get_secteurs_planifies(annee: int | None = Query(None, ge=2000, le=2100), centre: str | None = _CENTRE):
     """Nombre de secteurs planifiés par centre et par mois."""
