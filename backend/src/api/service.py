@@ -7,8 +7,9 @@ from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
-from . import db, dfc, evolution, manuels, objectifs, queries, releve, store, zones
+from . import db, dfc, evolution, exports, manuels, objectifs, queries, releve, store, zones
 from .config import get_settings
 
 log = logging.getLogger("controle.service")
@@ -1382,3 +1383,354 @@ def detail_chutes_secteur(secteur: str) -> dict:
         "abonnes": lignes,
     }
 
+
+
+# --------------------------------------------------------------------------- alertes par secteur (jour par jour)
+# Chaque jour J du mois M, chaque secteur planifié en M est comparé au même jour
+# de son mois de référence : M-1 pour un mensuel, M-2 pour un bimensuel
+# (planning PLANIF_RELEVE / PLANIFDETAILLE). L'alerte porte sur l'encaissement
+# du jour ; le cumul du 1er au jour J est donné à côté.
+import calendar as _calendrier
+
+SEUIL_ALERTE_CHUTE = -15.0      # % : alerte rouge (baisse de 15 % ou plus)
+SEUIL_ALERTE_BAISSE = -15.0     # % : même seuil que la chute (plus de catégorie orange)
+MONTANT_MIN_REFERENCE = 10000.0  # MRU : seuls les secteurs dont l'encaissé de référence est >= 10 000 sont comparés
+
+ALERTE_CHUTE = "SECT_CHUTE"
+ALERTE_BAISSE = "SECT_BAISSE"
+ALERTE_NORMAL = "SECT_NORMAL"
+ALERTE_SANS_REF = "SECT_SANS_REF"
+LIBELLES_ALERTE = {
+    ALERTE_CHUTE: "Chute",
+    ALERTE_BAISSE: "Baisse",
+    ALERTE_NORMAL: "Normal",
+    ALERTE_SANS_REF: "Sans référence",
+}
+_ORDRE_ALERTE = [ALERTE_CHUTE, ALERTE_BAISSE, ALERTE_NORMAL, ALERTE_SANS_REF]
+
+_verrou_planif = threading.Lock()
+_planif = {"fil": None, "depuis": None, "echec": None, "erreur": None}
+
+
+def _charger_planif():
+    try:
+        aujourd_hui = date.today()
+        params = {"d0": datetime(aujourd_hui.year - 1, 1, 1), "a0": aujourd_hui.year - 1}
+        lignes = db.fetch_all(queries.sql_planif_secteurs(get_settings().oracle_schema), params,
+                              delai_ms=900_000)
+        for l in lignes:
+            l["centre"] = str(l["centre"]).strip() if l.get("centre") is not None else None
+            l["secteur"] = str(l["secteur"]).strip() if l.get("secteur") is not None else None
+        store.remplacer_planif(lignes)
+        _planif["echec"], _planif["erreur"] = None, None
+        log.info("Planning des secteurs chargé : %s lignes", len(lignes))
+    except Exception as exc:
+        _planif["echec"], _planif["erreur"] = time.monotonic(), str(exc)
+        log.warning("Planning des secteurs non chargé : %s", exc)
+    finally:
+        _planif["fil"] = None
+
+
+def _assurer_planif():
+    """Charge une fois par jour le planning des secteurs, en arrière-plan
+    (même fonctionnement que les tarifs)."""
+    with _verrou_planif:
+        if store.planif_a_jour():
+            return
+        connu = store.info_planif() is not None
+        if _planif["fil"] is None:
+            echec = _planif["echec"]
+            if echec is None or time.monotonic() - echec > DELAI_PERSONNEL:
+                _planif["depuis"] = time.monotonic()
+                _planif["fil"] = threading.Thread(target=_charger_planif, name="planif", daemon=True)
+                _planif["fil"].start()
+            elif not connu:
+                raise db.BaseIndisponible(f"Planning des secteurs non chargé : {_planif['erreur']}")
+        if not connu:
+            secondes = time.monotonic() - _planif["depuis"]
+            exc = ChargementEnCours("planif", 0, 1, secondes)
+            exc.args = (f"Lecture du planning des secteurs dans Oracle en cours, depuis {int(secondes)} s.",)
+            raise exc
+
+
+HEURE_RAPPORT = 23  # heure du rapport quotidien des chutes (journée considérée comme close)
+
+
+def _jour_alerte(jour: date | None) -> date:
+    """Jour calculé par défaut : aujourd'hui à partir de 23 h (journée close),
+    sinon hier. Jamais dans le futur."""
+    maintenant = datetime.now()
+    aujourd_hui = maintenant.date()
+    defaut = aujourd_hui if maintenant.hour >= HEURE_RAPPORT else aujourd_hui - timedelta(days=1)
+    return min(jour or defaut, aujourd_hui)
+
+
+def _mois_ref(annee: int, mois: int, frequence: str) -> tuple[int, int]:
+    """Mois de référence : M-1 pour un mensuel, M-2 pour un bimensuel."""
+    n = annee * 12 + (mois - 1) - (1 if frequence == "MENSUEL" else 2)
+    return n // 12, n % 12 + 1
+
+
+def _meme_jour(annee: int, mois: int, jour: int) -> date:
+    """Même jour dans un autre mois (le 31 devient le dernier jour du mois)."""
+    return date(annee, mois, min(jour, _calendrier.monthrange(annee, mois)[1]))
+
+
+def _statut_alerte(reference: float, variation: float | None) -> str:
+    if reference < MONTANT_MIN_REFERENCE or variation is None:
+        return ALERTE_SANS_REF
+    if variation <= SEUIL_ALERTE_CHUTE:
+        return ALERTE_CHUTE
+    if variation <= SEUIL_ALERTE_BAISSE:
+        return ALERTE_BAISSE
+    return ALERTE_NORMAL
+
+
+def _preparer_alertes(jour: date) -> date:
+    """Charge ce qu'il faut ; retourne le premier jour d'encaissement nécessaire (1er de M-2)."""
+    log.info("alertes_secteurs : tarifs…")
+    _assurer_tarifs()
+    log.info("alertes_secteurs : planning…")
+    _assurer_planif()
+    a, m = _mois_ref(jour.year, jour.month, "BIMENSUEL")
+    debut = date(a, m, 1)
+    log.info("alertes_secteurs : encaissements du %s au %s…", debut, jour)
+    _assurer_encaissements(debut, jour)
+    return debut
+
+
+def _somme(montants: dict, sect: str, d1: date, d2: date) -> float:
+    return sum(montants.get((sect, d1 + timedelta(days=i)), 0.0) for i in range((d2 - d1).days + 1))
+
+
+def _periode(d1: date, d2: date) -> str:
+    return f"{d1:%d}-{d2:%d/%m/%Y}"
+
+
+def _ligne_alerte(p: dict, jour: date, montants: dict, agreg: dict | None = None) -> dict:
+    """Un secteur au jour J : cumul du 1er au jour J, comparé au cumul du 1er
+    au même jour du mois de référence (M-1 mensuel, M-2 bimensuel ou hors
+    planning). L'alerte porte sur ce cumul ; l'encaissé du jour seul est donné
+    à côté. `agreg` : {(d1, f1): {sect_id: (montant, reçus, abonnés)}}."""
+    a, m = _mois_ref(jour.year, jour.month, p["frequence"] or "BIMENSUEL")
+    jour_ref = _meme_jour(a, m, jour.day)
+    d1, d1_ref = jour.replace(day=1), date(a, m, 1)
+    du_jour = montants.get((p["sect_id"], jour), 0.0)
+    du_jour_ref = montants.get((p["sect_id"], jour_ref), 0.0)
+    cumul = _somme(montants, p["sect_id"], d1, jour)
+    cumul_ref = _somme(montants, p["sect_id"], d1_ref, jour_ref)
+    variation = _pct(cumul - cumul_ref, cumul_ref) if cumul_ref else None
+    var_jour = _pct(du_jour - du_jour_ref, du_jour_ref) if du_jour_ref else None
+    hors = p["secteur"] == store.SECTEUR_HORS
+    # Hors secteur (groupements, devis, autres) : affiché pour que les totaux du
+    # centre soient complets, mais jamais en alerte.
+    statut = ALERTE_SANS_REF if hors else _statut_alerte(cumul_ref, variation)
+    nb = ((agreg or {}).get((d1, jour)) or {}).get(p["sect_id"], (0, 0, 0))
+    nb_ref = ((agreg or {}).get((d1_ref, jour_ref)) or {}).get(p["sect_id"], (0, 0, 0))
+    return {
+        "zone": zones.zone_du_centre(p["centre"]),
+        "centre": p["centre"],
+        "nom_centre": None,
+        "sect_id": p["sect_id"],
+        "secteur": "Hors secteur" if hors else p["secteur"],
+        "frequence": p["frequence"] or "Hors planning",
+        "planifie": "Oui" if p.get("planifie") else "Non",
+        "mois": f"{jour.year}-{jour.month:02d}",
+        "mois_ref": f"{a}-{m:02d}",
+        "jour": jour.isoformat(),
+        "jour_ref": jour_ref.isoformat(),
+        "periode": _periode(d1, jour),
+        "periode_ref": _periode(d1_ref, jour_ref),
+        "date_plan": store._sortie(p["date_plan"]),
+        "date_facturation": store._sortie(p["date_fact_reelle"]),
+        "cumul": round(cumul, 2),
+        "cumul_ref": round(cumul_ref, 2),
+        "ecart": round(cumul - cumul_ref, 2),
+        "variation_pct": variation,
+        "nb_recus": nb[1],
+        "nb_recus_ref": nb_ref[1],
+        "nb_abonnes": nb[2],
+        "nb_abonnes_ref": nb_ref[2],
+        "montant_jour": round(du_jour, 2),
+        "montant_jour_ref": round(du_jour_ref, 2),
+        "variation_jour_pct": var_jour,
+        "statut": "Hors secteur" if hors else LIBELLES_ALERTE[statut],
+        "statut_code": statut,
+    }
+
+
+def _sonde_blocage(nom: str, secondes: float = 45.0) -> threading.Timer:
+    """Si `nom` dure plus de `secondes`, écrit dans le journal la pile de chaque
+    fil d'exécution (pour trouver un blocage). À annuler à la fin du calcul."""
+    def vider():
+        import sys
+        import traceback
+        piles = []
+        noms = {t.ident: t.name for t in threading.enumerate()}
+        for ident, cadre in sys._current_frames().items():
+            piles.append(f"--- fil {noms.get(ident, ident)}\n" + "".join(traceback.format_stack(cadre)))
+        log.warning("%s dure plus de %.0f s, piles des fils :\n%s", nom, secondes, "\n".join(piles))
+    minuterie = threading.Timer(secondes, vider)
+    minuterie.daemon = True
+    minuterie.start()
+    return minuterie
+
+
+def alertes_secteurs(jour: date | None = None, centre: str | None = None, zone: str | None = None) -> dict:
+    """Alerte de chaque secteur au jour J (hier, ou aujourd'hui après 23 h) ;
+    `zone` : une ou plusieurs zones de centres séparées par des virgules
+    (NKTT NORD,NOUADHIBOU…)."""
+    sonde = _sonde_blocage("alertes_secteurs")
+    try:
+        return _alertes_secteurs(jour, centre, (zone or "").strip() or None)
+    finally:
+        sonde.cancel()
+
+
+def _alertes_secteurs(jour: date | None = None, centre: str | None = None, zone: str | None = None) -> dict:
+    jour = _jour_alerte(jour)
+    centre = str(centre).strip() if centre else None
+    t0 = time.monotonic()
+    log.info("alertes_secteurs %s : début", jour)
+    debut = _preparer_alertes(jour)
+    log.info("alertes_secteurs %s : données prêtes (%.1f s)", jour, time.monotonic() - t0)
+    secteurs = store.tous_secteurs(jour.year, jour.month, debut, jour)
+    log.info("alertes_secteurs %s : %s secteurs (%.1f s)", jour, len(secteurs), time.monotonic() - t0)
+    if centre:
+        secteurs = [p for p in secteurs if str(p["centre"]) == centre]
+    if zone:
+        choix = {z.strip() for z in zone.split(",") if z.strip()}
+        secteurs = [p for p in secteurs if zones.zone_du_centre(p["centre"]) in choix]
+    montants = store.encaissements_par_secteur_jour(debut, jour)
+    # Reçus et abonnés payeurs : une période en cours et deux de référence (M-1, M-2).
+    agreg = {(jour.replace(day=1), jour): store.agreg_secteurs(jour.replace(day=1), jour)}
+    for freq in ("MENSUEL", "BIMENSUEL"):
+        a, m = _mois_ref(jour.year, jour.month, freq)
+        d1, f1 = date(a, m, 1), _meme_jour(a, m, jour.day)
+        agreg[(d1, f1)] = store.agreg_secteurs(d1, f1)
+    log.info("alertes_secteurs %s : montants calculés (%.1f s)", jour, time.monotonic() - t0)
+    noms = {str(c["centre"]): c["nom_centre"] for c in centres()}
+    lignes = []
+    for p in secteurs:
+        l = _ligne_alerte(p, jour, montants, agreg)
+        # Secteur sans aucun encaissement ni ce mois ni au mois de référence : ignoré.
+        if not l["cumul"] and not l["cumul_ref"]:
+            continue
+        l["nom_centre"] = noms.get(str(p["centre"]))
+        lignes.append(l)
+    vus = store.secteurs_vus(jour)
+    for l in lignes:
+        l["vu"] = l["sect_id"] in vus
+    log.info("alertes_secteurs %s : terminé, %s lignes (%.1f s)", jour, len(lignes), time.monotonic() - t0)
+    # Chutes d'abord, de la plus forte perte (écart) à la plus faible.
+    lignes.sort(key=lambda l: (_ORDRE_ALERTE.index(l["statut_code"]), l["ecart"],
+                               _cle_centre(l["centre"]), str(l["secteur"])))
+    compte = {code: sum(1 for l in lignes if l["statut_code"] == code) for code in _ORDRE_ALERTE}
+    return {
+        "jour": jour.isoformat(),
+        "periode": _periode(jour.replace(day=1), jour),
+        "nb_chutes_non_vues": sum(1 for l in lignes if l["statut_code"] == ALERTE_CHUTE and not l["vu"]),
+        "seuil_chute": SEUIL_ALERTE_CHUTE,
+        "seuil_baisse": SEUIL_ALERTE_BAISSE,
+        "seuil_reference": MONTANT_MIN_REFERENCE,
+        "nb_chutes": compte[ALERTE_CHUTE],
+        "nb_baisses": compte[ALERTE_BAISSE],
+        "nb_secteurs": len(lignes),
+        "nb_planifies": sum(1 for l in lignes if l["planifie"] == "Oui"),
+        "nb_mensuels": sum(1 for l in lignes if l["frequence"] == "MENSUEL"),
+        "nb_bimensuels": sum(1 for l in lignes if l["frequence"] == "BIMENSUEL"),
+        "journee_en_cours": jour == date.today() and datetime.now().hour < HEURE_RAPPORT,
+        "planning": store.info_planif(),
+        "lignes": lignes,
+    }
+
+
+# --------------------------------------------------------------------------- rapport Excel des chutes (23 h)
+DOSSIER_RAPPORTS = Path(__file__).resolve().parents[2] / "sorties_alertes"
+
+
+def _libelle_ref(lignes: list[dict]) -> str:
+    """Période de référence pour les en-têtes : unique si tous les secteurs ont
+    le même mois de référence, sinon les deux périodes (M-1 et M-2)."""
+    periodes = sorted({l["periode_ref"] for l in lignes}, reverse=True)
+    return " ou ".join(periodes) if periodes else "réf."
+
+
+def _colonnes_rapport(jour: date, lignes: list[dict]) -> list[tuple]:
+    p = f"{jour.replace(day=1):%d}-{jour:%d/%m/%Y}"
+    r = _libelle_ref(lignes)
+    return [
+        ("zone", "Zone", "texte"),
+        ("centre", "Centre", "texte"),
+        ("nom_centre", "Nom du centre", "texte"),
+        ("secteur", "Secteur", "texte"),
+        ("cumul_ref", f"Encaissé {r}", "montant"),
+        ("cumul", f"Encaissé {p}", "montant"),
+        ("ecart", "Écart", "montant"),
+        ("variation_pct", "Variation (%)", "pct"),
+        ("nb_recus_ref", f"Reçus {r}", "entier"),
+        ("nb_recus", f"Reçus {p}", "entier"),
+        ("nb_abonnes_ref", f"Abonnés payeurs {r}", "entier"),
+        ("nb_abonnes", f"Abonnés payeurs {p}", "entier"),
+    ]
+
+
+def rapport_chutes(jour: date | None = None, centre: str | None = None, zone: str | None = None) -> tuple[bytes, str]:
+    """Classeur des secteurs en chute au jour J (cumul du 1er au jour J), même
+    présentation que chutes_secteur_AAAA-MM-JJ.xlsx."""
+    data = alertes_secteurs(jour, centre, zone)
+    jour = date.fromisoformat(data["jour"])
+    chutes = [l for l in data["lignes"] if l["statut_code"] == ALERTE_CHUTE]
+    contenu = exports.classeur_beige(f"Chutes {jour:%d-%m-%Y}", _colonnes_rapport(jour, chutes), chutes)
+    return contenu, f"chutes_secteur_{jour.isoformat()}.xlsx"
+
+
+def generer_rapport_chutes(jour: date | None = None) -> Path:
+    """Écrit le rapport du jour dans backend/sorties_alertes (appelé chaque soir à 23 h)."""
+    contenu, nom = rapport_chutes(jour)
+    DOSSIER_RAPPORTS.mkdir(parents=True, exist_ok=True)
+    chemin = DOSSIER_RAPPORTS / nom
+    chemin.write_bytes(contenu)
+    log.info("Rapport des chutes écrit : %s", chemin)
+    return chemin
+
+
+def alerte_secteur_detail(sect_id: str, jour: date | None = None) -> dict:
+    """Un secteur jour par jour du 1er au jour J, comparé au même jour du mois
+    de référence, et le détail par abonné (du 1er au jour J)."""
+    jour = _jour_alerte(jour)
+    debut = _preparer_alertes(jour)
+    p = next((x for x in store.tous_secteurs(jour.year, jour.month, debut, jour) if x["sect_id"] == sect_id), None)
+    if p is None:
+        return {"sect_id": sect_id, "jour": jour.isoformat(), "trouve": False, "jours": [], "abonnes": []}
+    montants = store.encaissements_par_secteur_jour(debut, jour, [sect_id])
+    jours = []
+    for n in range(1, jour.day + 1):
+        jours.append(_ligne_alerte(p, jour.replace(day=n), montants))
+    a, m = _mois_ref(jour.year, jour.month, p["frequence"] or "BIMENSUEL")
+    abonnes = store.encaissements_secteur_abonnes(sect_id, jour.replace(day=1), jour,
+                                                  date(a, m, 1), _meme_jour(a, m, jour.day))
+    for x in abonnes:
+        x["ecart"] = round(x["montant_actuel"] - x["montant_ref"], 2)
+        x["variation_pct"] = _pct(x["ecart"], x["montant_ref"]) if x["montant_ref"] else None
+    abonnes.sort(key=lambda x: x["ecart"])
+    return {"trouve": True, "jour": jour.isoformat(), "secteur": jours[-1], "jours": jours, "abonnes": abonnes}
+
+
+def secteurs_planifies_annee(annee: int, centre: str | None = None) -> dict:
+    """Nombre de secteurs planifiés par centre et par mois."""
+    _assurer_planif()
+    centre = str(centre).strip() if centre else None
+    noms = {str(c["centre"]): c["nom_centre"] for c in centres()}
+    par_centre: dict[str, dict] = {}
+    for r in store.nb_secteurs_planifies(annee, centre):
+        l = par_centre.setdefault(r["centre"], {"centre": r["centre"], "nom_centre": noms.get(str(r["centre"]))})
+        l[f"m{r['mois']:02d}"] = r["nb"]
+        l[f"m{r['mois']:02d}_detail"] = r
+    lignes = sorted(par_centre.values(), key=lambda l: _cle_centre(l["centre"]))
+    return {"annee": annee, "lignes": lignes, "planning": store.info_planif()}
+
+
+def marquer_secteurs_vus(jour: date | None, sect_ids: list[str]):
+    """Valide (« c'est bien ») les secteurs en chute du jour : le bandeau ne les montre plus."""
+    store.marquer_secteurs_vus(_jour_alerte(jour), sect_ids)

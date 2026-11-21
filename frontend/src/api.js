@@ -50,6 +50,17 @@ export async function marquerVus(recus) {
   return rep.json();
 }
 
+/** Valide (« c'est bien ») des secteurs en chute : le bandeau ne les montre plus. */
+export async function marquerSecteursVus(jour, sectIds) {
+  const rep = await fetch('/api/alertes_secteurs/vus', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jour, sect_ids: sectIds }),
+  });
+  if (!rep.ok) throw new Error(`Erreur ${rep.status}`);
+  return rep.json();
+}
+
 /** Envoie un relevé bancaire (classeur Excel) : le serveur le lit et l'enregistre. */
 export async function importerReleve(fichier) {
   const p = new URLSearchParams({ nom: fichier.name || 'releve.xlsx' });

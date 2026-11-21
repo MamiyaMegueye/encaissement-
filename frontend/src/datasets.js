@@ -37,6 +37,12 @@ export const ONGLETS = [
     description: 'Reçus de caisse annulés sur la période.',
   },
   {
+    id: 'alertes',
+    titre: 'Alertes secteurs',
+    description:
+      'Tous les secteurs de tous les centres : encaissé du 1er au jour J comparé à la même période de M-1 (mensuel) ou de M-2 (bimensuel et hors planning). Rapport Excel des chutes chaque soir à 23 h.',
+  },
+  {
     id: 'tarifs',
     titre: 'Tarifs',
     description:
@@ -348,6 +354,11 @@ export const GRAVITE = {
   AUTRE_BANQUE: 'attention',
   MONTANT_DIFFERENT: 'serieux',
   NON_RETROUVE: 'critique',
+  SECT_CHUTE: 'critique',
+  SECT_BAISSE: 'serieux',
+  SECT_NORMAL: 'bon',
+  SECT_NON_FACTURE: 'attention',
+  SECT_SANS_REF: 'neutre',
   EVO_ARRET: 'critique',
   EVO_CHUTE: 'critique',
   EVO_BAISSE: 'serieux',

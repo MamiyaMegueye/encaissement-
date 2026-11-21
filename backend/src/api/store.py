@@ -115,6 +115,7 @@ _A_RECHARGER = datetime(1970, 1, 1)
 _JEU_CENTRES = "centres"
 _JEU_PERSONNEL = "personnel"
 _JEU_TARIFS = "tarifs"
+_JEU_PLANIF = "planif_secteurs"
 # Jeux dont la colonne `matricule` est celle d'un agent : son nom est ajouté à
 # la lecture (colonne `nom_agent`), depuis la petite table locale `personnel`.
 # Les lignes déjà chargées n'ont ainsi pas à être relues dans Oracle.
@@ -197,15 +198,25 @@ def _creer_tables(con):
     # Reçus non validés déjà consultés : l'alerte ne signale que les autres.
     # Cette table n'est jamais effacée, elle ne peut pas être relue ailleurs.
     con.execute("CREATE TABLE IF NOT EXISTS non_valides_vus (num_recu VARCHAR, vu_le TIMESTAMP)")
+    # Secteurs en chute déjà validés (« c'est bien ») pour un jour donné : le
+    # bandeau ne les signale plus. Jamais effacée ici.
+    con.execute("CREATE TABLE IF NOT EXISTS alertes_secteurs_vus (jour DATE, sect_id VARCHAR, vu_le TIMESTAMP)")
     # Tarif de chaque abonnement (S_TARIF_PR.TARP_CODE par PFACT_ID), avec le
     # code de son groupement : rechargé une fois par jour depuis Oracle.
     colonnes = [c[0] for c in con.execute(
         "SELECT column_name FROM information_schema.columns WHERE table_name = 'tarifs'").fetchall()]
-    if colonnes and ("statut" not in colonnes or "secteur" not in colonnes):
+    if colonnes and ("statut" not in colonnes or "secteur" not in colonnes or "sect_id" not in colonnes):
         # Ancienne table sans le statut ou sans le secteur : recréée et rechargée.
         con.execute("DROP TABLE tarifs")
         con.execute("DELETE FROM sync WHERE jeu = 'tarifs'")
-    con.execute("CREATE TABLE IF NOT EXISTS tarifs (abn_id VARCHAR, grp_code VARCHAR, tarif VARCHAR, secteur VARCHAR, statut VARCHAR)")
+    con.execute("CREATE TABLE IF NOT EXISTS tarifs (abn_id VARCHAR, grp_code VARCHAR, tarif VARCHAR, secteur VARCHAR, "
+                "statut VARCHAR, sect_id VARCHAR)")
+    # Planning des relevés par secteur et jour réel de facturation : rechargé
+    # une fois par jour depuis Oracle (PLANIF_RELEVE, PLANIFDETAILLE, S_FACTURE_M).
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS planif_secteurs (centre VARCHAR, sect_id VARCHAR, secteur VARCHAR, "
+        "frequence VARCHAR, annee INTEGER, mois INTEGER, date_releve_plan DATE, date_plan DATE, "
+        "date_fact_reelle DATE, nb_factures INTEGER)")
     # Références de l'État (abonnements et groupements), rechargées à chaque
     # ouverture depuis le module etat : sert à séparer Privés et État.
     from . import etat
@@ -644,8 +655,8 @@ def invalider(debut: date, fin: date):
     du rechargement, elles restent servies."""
     with _transaction() as cur:
         cur.execute(
-            "UPDATE sync SET charge_le = ? WHERE jeu NOT IN (?, ?, ?) AND jour BETWEEN ? AND ?",
-            [_A_RECHARGER, _JEU_CENTRES, _JEU_PERSONNEL, _JEU_TARIFS, debut, fin],
+            "UPDATE sync SET charge_le = ? WHERE jeu NOT IN (?, ?, ?, ?) AND jour BETWEEN ? AND ?",
+            [_A_RECHARGER, _JEU_CENTRES, _JEU_PERSONNEL, _JEU_TARIFS, _JEU_PLANIF, debut, fin],
         )
 
 
@@ -999,7 +1010,7 @@ def remplacer_personnel(lignes: list[dict]):
 
 # --------------------------------------------------------------------------- tarifs
 _COLONNES_TARIFS = [("abn_id", "VARCHAR"), ("grp_code", "VARCHAR"), ("tarif", "VARCHAR"),
-                    ("secteur", "VARCHAR"), ("statut", "VARCHAR")]
+                    ("secteur", "VARCHAR"), ("statut", "VARCHAR"), ("sect_id", "VARCHAR")]
 
 
 def tarifs_a_jour() -> bool:
@@ -1097,8 +1108,8 @@ def etat() -> dict:
     lignes = _cur().execute(
         "SELECT jeu, COUNT(DISTINCT jour), MIN(jour), MAX(jour), MAX(charge_le), "
         "COUNT(DISTINCT CASE WHEN centre != ? THEN centre END) "
-        "FROM sync WHERE jeu NOT IN (?, ?, ?) GROUP BY jeu ORDER BY jeu",
-        [TOUS, _JEU_CENTRES, _JEU_PERSONNEL, _JEU_TARIFS]
+        "FROM sync WHERE jeu NOT IN (?, ?, ?, ?) GROUP BY jeu ORDER BY jeu",
+        [TOUS, _JEU_CENTRES, _JEU_PERSONNEL, _JEU_TARIFS, _JEU_PLANIF]
     ).fetchall()
     return {
         "fichier": str(_chemin()),
@@ -1240,4 +1251,163 @@ def chutes_secteur_detail(jour_ref: date, secteur: str) -> list[dict]:
         {"reference": ref, "tarif": tarif, "statut_abn": statut, "montant_actuel": a or 0, "montant_ref": r or 0, "variation_pct": v}
         for ref, tarif, statut, a, r, v in lignes
     ]
+
+
+
+# --------------------------------------------------------------------------- alertes secteurs (planning)
+_COLONNES_PLANIF = [("centre", "VARCHAR"), ("sect_id", "VARCHAR"), ("secteur", "VARCHAR"),
+                    ("frequence", "VARCHAR"), ("annee", "INTEGER"), ("mois", "INTEGER"),
+                    ("date_releve_plan", "DATE"), ("date_plan", "DATE"),
+                    ("date_fact_reelle", "DATE"), ("nb_factures", "INTEGER")]
+
+
+def planif_a_jour() -> bool:
+    n = _cur().execute(
+        "SELECT COUNT(*) FROM sync WHERE jeu = ? AND jour = ?", [_JEU_PLANIF, date.today()]
+    ).fetchone()[0]
+    return n > 0
+
+
+def info_planif() -> dict | None:
+    ligne = _cur().execute(
+        "SELECT charge_le, nb_lignes FROM sync WHERE jeu = ? ORDER BY charge_le DESC LIMIT 1", [_JEU_PLANIF]
+    ).fetchone()
+    return {"charge_le": _sortie(ligne[0]), "nb_lignes": ligne[1]} if ligne else None
+
+
+def remplacer_planif(lignes: list[dict]):
+    with _transaction() as cur:
+        cur.execute("DELETE FROM planif_secteurs")
+        _inserer(cur, "planif_secteurs", _COLONNES_PLANIF, lignes)
+        cur.execute("DELETE FROM sync WHERE jeu = ?", [_JEU_PLANIF])
+        cur.execute("INSERT INTO sync VALUES (?,?,?,?,?)",
+                    [_JEU_PLANIF, date.today(), TOUS, datetime.now(), len(lignes)])
+
+
+def secteurs_planifies(annee: int, mois: int, centre: str | None = None) -> list[dict]:
+    """Secteurs planifiés du mois (planning PLANIFDETAILLE)."""
+    sql = ("SELECT sect_id, centre, secteur, frequence, date_releve_plan, date_plan, date_fact_reelle "
+           "FROM planif_secteurs WHERE annee = ? AND mois = ?")
+    params: list = [annee, mois]
+    if centre:
+        sql += " AND centre = ?"
+        params.append(str(centre).strip())
+    noms = ["sect_id", "centre", "secteur", "frequence", "date_releve_plan", "date_plan", "date_fact_reelle"]
+    return [dict(zip(noms, l)) for l in _cur().execute(sql, params).fetchall()]
+
+
+def nb_secteurs_planifies(annee: int, centre: str | None = None) -> list[dict]:
+    """Nombre de secteurs planifiés par centre et par mois (mensuels, bimensuels, facturés)."""
+    sql = ("SELECT centre, mois, COUNT(DISTINCT sect_id), "
+           "COUNT(DISTINCT CASE WHEN frequence = 'MENSUEL' THEN sect_id END), "
+           "COUNT(DISTINCT CASE WHEN frequence = 'BIMENSUEL' THEN sect_id END), "
+           "COUNT(DISTINCT CASE WHEN date_fact_reelle IS NOT NULL THEN sect_id END) "
+           "FROM planif_secteurs WHERE annee = ?")
+    params: list = [annee]
+    if centre:
+        sql += " AND centre = ?"
+        params.append(str(centre).strip())
+    sql += " GROUP BY centre, mois"
+    return [{"centre": c, "mois": int(m), "nb": int(n), "nb_mensuels": int(nm),
+             "nb_bimensuels": int(nb), "nb_factures": int(nf)}
+            for c, m, n, nm, nb, nf in _cur().execute(sql, params).fetchall()]
+
+
+def secteurs_vus(jour: date) -> set[str]:
+    return {r[0] for r in _cur().execute(
+        "SELECT DISTINCT sect_id FROM alertes_secteurs_vus WHERE jour = ?", [jour]).fetchall()}
+
+
+def marquer_secteurs_vus(jour: date, sect_ids: list[str]):
+    deja = secteurs_vus(jour)
+    nouveaux = [s for s in dict.fromkeys(sect_ids) if s not in deja]
+    if not nouveaux:
+        return
+    maintenant = datetime.now()
+    with _transaction() as cur:
+        cur.executemany("INSERT INTO alertes_secteurs_vus VALUES (?, ?, ?)",
+                        [[jour, s, maintenant] for s in nouveaux])
+
+
+# --------------------------------------------------------------------------- encaissements par secteur
+# Clé d'un secteur : « centre-secteur », le centre étant celui de la ligne
+# d'encaissement (comme dans l'onglet Encaissements) et le secteur celui de
+# l'abonné (SECT_CODE). Ce qui n'est pas rattachable à un secteur (groupements,
+# devis, autres, abonnés sans secteur) va dans « centre-HS » : la somme des
+# lignes d'un centre est ainsi égale au total de l'onglet Encaissements.
+SECTEUR_HORS = "HS"
+_CLE_SECTEUR = (f"TRIM(e.centre) || '-' || CASE WHEN e.type_reference = 'ABONNE' AND NULLIF(TRIM(t.secteur), '') "
+                f"IS NOT NULL THEN TRIM(t.secteur) ELSE '{SECTEUR_HORS}' END")
+# Jointure simple sur l'abonné (une condition en plus dans le ON fait passer
+# DuckDB en comparaison de toutes les paires, ce qui bloque le serveur) ; le
+# type ABONNE est vérifié dans _CLE_SECTEUR.
+_FROM_SECTEUR = ("FROM encaissements e LEFT JOIN tarifs t ON t.abn_id = e.reference "
+                 "WHERE e.statut = 'VALIDE' AND e.centre IS NOT NULL")
+
+
+def tous_secteurs(annee: int, mois: int, debut: date, fin: date) -> list[dict]:
+    """Secteurs (clé centre-secteur) ayant des encaissements sur [debut, fin],
+    avec leur fréquence (dernier planning connu) et leur passage du mois."""
+    sql = f"""
+    WITH k AS (
+        SELECT DISTINCT {_CLE_SECTEUR} AS cle {_FROM_SECTEUR}
+          AND e.date_comptable BETWEEN $debut AND $fin
+    ),
+    k2 AS (
+        SELECT cle, split_part(cle, '-', 1) AS centre,
+               substr(cle, length(split_part(cle, '-', 1)) + 2) AS secteur FROM k
+    ),
+    dern AS (
+        SELECT TRIM(centre) AS centre, TRIM(secteur) AS secteur, frequence FROM planif_secteurs
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY TRIM(centre), TRIM(secteur) ORDER BY annee DESC, mois DESC) = 1
+    ),
+    moisc AS (
+        SELECT TRIM(centre) AS centre, TRIM(secteur) AS secteur, date_plan, date_fact_reelle FROM planif_secteurs
+        WHERE annee = $annee AND mois = $mois
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY TRIM(centre), TRIM(secteur) ORDER BY date_plan DESC NULLS LAST) = 1
+    )
+    SELECT k2.cle, k2.centre, k2.secteur, d.frequence, m.date_plan, m.date_fact_reelle,
+           m.centre IS NOT NULL AS planifie
+    FROM k2
+    LEFT JOIN dern d  ON d.centre = k2.centre AND d.secteur = k2.secteur
+    LEFT JOIN moisc m ON m.centre = k2.centre AND m.secteur = k2.secteur
+    """
+    noms = ["sect_id", "centre", "secteur", "frequence", "date_plan", "date_fact_reelle", "planifie"]
+    lignes = _cur().execute(sql, {"annee": annee, "mois": mois, "debut": debut, "fin": fin}).fetchall()
+    return [dict(zip(noms, l)) for l in lignes]
+
+
+def encaissements_par_secteur_jour(debut: date, fin: date, cles: list[str] | None = None) -> dict:
+    """{(clé secteur, jour): montant} de tous les reçus validés."""
+    sql = f"SELECT {_CLE_SECTEUR} AS cle, e.date_comptable, SUM(e.montant) {_FROM_SECTEUR} AND e.date_comptable BETWEEN ? AND ?"
+    params: list = [debut, fin]
+    if cles is not None:
+        if not cles:
+            return {}
+        sql += f" AND {_CLE_SECTEUR} IN ({','.join('?' * len(cles))})"
+        params.extend(cles)
+    sql += " GROUP BY 1, 2"
+    return {(c, _en_date(j)): float(m or 0) for c, j, m in _cur().execute(sql, params).fetchall()}
+
+
+def agreg_secteurs(debut: date, fin: date) -> dict:
+    """{clé secteur: (montant, nb_recus, nb_payeurs)} des reçus validés sur [debut, fin]."""
+    sql = (f"SELECT {_CLE_SECTEUR} AS cle, SUM(e.montant), COUNT(DISTINCT e.num_recu), COUNT(DISTINCT e.reference) "
+           f"{_FROM_SECTEUR} AND e.date_comptable BETWEEN ? AND ? GROUP BY 1")
+    return {c: (float(m or 0), int(n or 0), int(a or 0)) for c, m, n, a in _cur().execute(sql, [debut, fin]).fetchall()}
+
+
+def encaissements_secteur_abonnes(cle: str, d1: date, f1: date, d2: date, f2: date) -> list[dict]:
+    """Par abonné (ou référence) du secteur : montant de [d1, f1] et de la référence [d2, f2]."""
+    sql = f"""
+    SELECT e.reference, MIN(t.tarif), MIN(COALESCE(t.statut, e.type_reference)),
+           SUM(CASE WHEN e.date_comptable BETWEEN $d1 AND $f1 THEN e.montant ELSE 0 END),
+           SUM(CASE WHEN e.date_comptable BETWEEN $d2 AND $f2 THEN e.montant ELSE 0 END)
+    {_FROM_SECTEUR} AND {_CLE_SECTEUR} = $cle
+      AND ((e.date_comptable BETWEEN $d1 AND $f1) OR (e.date_comptable BETWEEN $d2 AND $f2))
+    GROUP BY e.reference
+    """
+    lignes = _cur().execute(sql, {"cle": cle, "d1": d1, "f1": f1, "d2": d2, "f2": f2}).fetchall()
+    return [{"reference": r, "tarif": t, "statut_abonne": st, "montant_actuel": float(a or 0),
+             "montant_ref": float(b or 0)} for r, t, st, a, b in lignes]
 

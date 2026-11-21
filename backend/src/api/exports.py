@@ -5,7 +5,7 @@ from datetime import date
 
 from openpyxl import Workbook
 from openpyxl.formatting.rule import FormulaRule
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.styles import Alignment, Border, Font, GradientFill, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 # (clé, libellé, type) — types : texte, entier, montant, pct, date
@@ -655,6 +655,84 @@ def classeur_format_rapprochement(operations: list[dict], debut: date, fin: date
             ws.column_dimensions[get_column_letter(i)].width = largeur
         ws.freeze_panes = "A4"
 
+    tampon = io.BytesIO()
+    wb.save(tampon)
+    return tampon.getvalue()
+
+
+# --------------------------------------------------------------------------- rapport des chutes (beige)
+_BEIGE_ENTETE = GradientFill(type="linear", degree=90, stop=("F6EBD3", "E3CDA0"))
+_BEIGE_TOTAL = GradientFill(type="linear", degree=90, stop=("EFE0C0", "DDC48F"))
+_BEIGE_PAIRE = "FBF6EC"
+_BEIGE_IMPAIRE = "F4EAD6"
+_BRUN_TEXTE = "4A3B22"
+_BRUN_BORD = Side(style="thin", color="C9B183")
+_BRUN_FIN = Side(style="hair", color="E2D3B3")
+
+
+def classeur_beige(titre: str, colonnes: list[tuple], lignes: list[dict]) -> bytes:
+    """Une feuille présentée comme chutes_secteur_AAAA-MM-JJ.xlsx, en beige :
+    en-tête et ligne TOTAL en dégradé beige, lignes alternées beige clair,
+    écarts et variations négatifs en rouge."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = titre[:31]
+    ws.append([libelle for _, libelle, _ in colonnes])
+    for cellule in ws[1]:
+        cellule.fill = _BEIGE_ENTETE
+        cellule.font = Font(bold=True, color=_BRUN_TEXTE)
+        cellule.border = Border(top=_BRUN_BORD, bottom=_BRUN_BORD, left=_BRUN_FIN, right=_BRUN_FIN)
+        cellule.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[1].height = 30
+
+    for ligne in lignes:
+        ws.append([_en_date(ligne.get(c)) if g == "date" else ligne.get(c) for c, _, g in colonnes])
+
+    derniere = ws.max_row
+    rouge = Font(color="B3261E")
+    for i, (cle, libelle, genre) in enumerate(colonnes, start=1):
+        lettre = get_column_letter(i)
+        fmt = {"montant": _FORMAT_MONTANT, "pct": _FORMAT_PCT, "date": "DD/MM/YYYY", "entier": "#,##0"}.get(genre)
+        for cellule in ws[lettre][1:]:
+            if fmt:
+                cellule.number_format = fmt
+            cellule.border = Border(bottom=_BRUN_FIN)
+            if genre in ("montant", "pct") and isinstance(cellule.value, (int, float)) and cellule.value < 0 \
+                    and cle in ("ecart", "variation_pct"):
+                cellule.font = rouge
+        largeur = len(libelle)
+        for ligne in lignes[:500]:
+            v = ligne.get(cle)
+            largeur = max(largeur, len(f"{v:,.2f}") if isinstance(v, float) else len(str(v or "")))
+        ws.column_dimensions[lettre].width = min(max(largeur + 3, 10), 40)
+
+    ws.freeze_panes = "A2"
+    if derniere >= 2:
+        plage = f"A2:{get_column_letter(len(colonnes))}{derniere}"
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(colonnes))}{derniere}"
+        for formule, couleur in (("MOD(ROW(),2)=0", _BEIGE_PAIRE), ("MOD(ROW(),2)=1", _BEIGE_IMPAIRE)):
+            ws.conditional_formatting.add(plage, FormulaRule(
+                formula=[formule], fill=PatternFill(start_color=couleur, end_color=couleur, fill_type="solid")))
+        total = []
+        for cle, _, genre in colonnes:
+            if genre == "montant":
+                total.append(round(sum(l.get(cle) or 0 for l in lignes if isinstance(l.get(cle), (int, float))), 2))
+            else:
+                total.append(None)
+        total[0] = "TOTAL"
+        ws.append(total)
+        for i, cellule in enumerate(ws[derniere + 1], start=1):
+            cellule.fill = _BEIGE_TOTAL
+            cellule.font = Font(bold=True, color=_BRUN_TEXTE)
+            cellule.border = Border(top=_BRUN_BORD, bottom=_BRUN_BORD)
+            if colonnes[i - 1][2] == "montant":
+                cellule.number_format = _FORMAT_MONTANT
+    # Impression : paysage, toutes les colonnes sur la largeur d'une page.
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_title_rows = "1:1"
     tampon = io.BytesIO()
     wb.save(tampon)
     return tampon.getvalue()

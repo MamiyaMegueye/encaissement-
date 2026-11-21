@@ -1,5 +1,6 @@
 """API du contrôle des versements : données, flux temps réel (SSE) et exports."""
 import asyncio
+import re
 import json
 import logging
 import signal
@@ -15,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from . import comparaison, db, dfc, evolution, exports, manuels, releve, service, store
+from . import comparaison, db, dfc, evolution, exports, manuels, releve, service, store, zones
 from .config import get_settings
 
 settings = get_settings()
@@ -24,6 +25,19 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s : %(message)s",
 )
 log = logging.getLogger("controle.api")
+
+# Journal aussi écrit dans backend/logs/controle.log (lisible sans le terminal).
+try:
+    from logging.handlers import RotatingFileHandler
+    from pathlib import Path as _Path
+    _dossier_logs = _Path(__file__).resolve().parents[2] / "logs"
+    _dossier_logs.mkdir(exist_ok=True)
+    _fichier_log = RotatingFileHandler(_dossier_logs / "controle.log", maxBytes=5_000_000, backupCount=2,
+                                       encoding="utf-8")
+    _fichier_log.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s [%(threadName)s] : %(message)s"))
+    logging.getLogger().addHandler(_fichier_log)
+except OSError:
+    pass
 
 
 # --------------------------------------------------------------------------- temps réel
@@ -101,6 +115,32 @@ async def _boucle_rafraichissement():
         await asyncio.sleep(settings.refresh_seconds)
 
 
+async def _boucle_rapport_chutes():
+    """Chaque soir à 23 h (HEURE_RAPPORT) : rapport Excel des secteurs en chute
+    du jour, cumul du 1er au jour, dans backend/sorties_alertes. Le bandeau rouge
+    passe au jour même à 23 h (rafraîchissement suivant). Au démarrage après
+    23 h, le rapport du jour est écrit s'il manque."""
+    while True:
+        maintenant = datetime.now()
+        cible = maintenant.replace(hour=service.HEURE_RAPPORT, minute=0, second=0, microsecond=0)
+        deja = (service.DOSSIER_RAPPORTS / f"chutes_secteur_{maintenant.date().isoformat()}.xlsx").exists()
+        if maintenant >= cible and deja:
+            cible += timedelta(days=1)
+        if cible > maintenant:
+            await asyncio.sleep((cible - maintenant).total_seconds())
+        jour = datetime.now().date()
+        for _ in range(60):  # données encore en chargement : on réessaie chaque minute, 1 h au plus
+            try:
+                await asyncio.to_thread(service.generer_rapport_chutes, jour)
+                break
+            except service.ChargementEnCours:
+                await asyncio.sleep(60)
+            except Exception as exc:  # base indisponible, etc. : nouvel essai dans une minute
+                log.warning("Rapport des chutes non écrit : %s", exc)
+                await asyncio.sleep(60)
+        await asyncio.sleep(60)
+
+
 # Un flux temps réel reste ouvert tant que le navigateur écoute. Or uvicorn
 # attend la fin de toutes les connexions avant de s'arrêter : sans précaution,
 # un redémarrage (--reload) ou un Ctrl+C resterait bloqué tant qu'une page est
@@ -135,12 +175,16 @@ def _fermer_les_flux_a_l_arret():
 async def lifespan(app: FastAPI):
     _fermer_les_flux_a_l_arret()
     tache = asyncio.create_task(_boucle_rafraichissement())
+    tache_rapport = asyncio.create_task(_boucle_rapport_chutes())
     log.info("Rafraîchissement toutes les %s minute(s)", settings.refresh_interval_minutes)
     yield
     arret["demande"] = True
     tache.cancel()
+    tache_rapport.cancel()
     with suppress(asyncio.CancelledError):
         await tache
+    with suppress(asyncio.CancelledError):
+        await tache_rapport
     # Fermer le pool interrompt les requêtes Oracle encore en cours : le
     # processus ne reste pas en vie à attendre leur fin.
     service.arreter()
@@ -234,7 +278,8 @@ def health():
 
 @app.get("/api/centres")
 def get_centres():
-    return service.centres()
+    # Zone de chaque centre (fichier des zones) : sert au filtre Zone de l'en-tête.
+    return [{**c, "zone": zones.zone_du_centre(c["centre"])} for c in service.centres()]
 
 
 @app.get("/api/controle")
@@ -323,6 +368,59 @@ def get_alerte_chutes_secteur():
 def get_detail_chutes_secteur(secteur: str):
     """Détail par abonné d'un secteur en chute."""
     return _json(service.detail_chutes_secteur(secteur))
+
+# --------------------------------------------------------------------------- alertes par secteur (planning)
+_CLE_SECTEUR_OK = re.compile(r"[0-9A-Za-z][0-9A-Za-z _-]{0,39}")  # clé « centre-secteur »
+_JOUR_ALERTE = Query(None, description="Jour de l'alerte (AAAA-MM-JJ) ; aujourd'hui par défaut")
+
+
+@app.get("/api/alertes_secteurs")
+def get_alertes_secteurs(jour: date | None = _JOUR_ALERTE, centre: str | None = _CENTRE,
+                         zone_centre: str | None = Query(None, max_length=300)):
+    """Tous les secteurs au jour J, comparés au même jour de M-1 (mensuel) ou M-2 (bimensuel, hors planning)."""
+    return _json(service.alertes_secteurs(jour, _centre(centre), zone_centre))
+
+
+@app.post("/api/alertes_secteurs/vus")
+async def marquer_secteurs_vus(request: Request):
+    """Valide des secteurs en chute. Corps : {"jour": "AAAA-MM-JJ", "sect_ids": ["123", ...]}."""
+    try:
+        corps = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Corps JSON attendu") from exc
+    ids = corps.get("sect_ids") if isinstance(corps, dict) else None
+    if not isinstance(ids, list) or len(ids) > 5000 or not all(isinstance(i, str) and _CLE_SECTEUR_OK.fullmatch(i) for i in ids):
+        raise HTTPException(status_code=400, detail="Liste d'identifiants de secteurs attendue")
+    try:
+        jour = date.fromisoformat(corps["jour"]) if corps.get("jour") else None
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Jour invalide (AAAA-MM-JJ)") from exc
+    await asyncio.to_thread(service.marquer_secteurs_vus, jour, ids)
+    return _json({"ok": True, "nb": len(ids)})
+
+
+@app.get("/api/alertes_secteurs/export.xlsx")
+def export_alertes_secteurs(jour: date | None = _JOUR_ALERTE, centre: str | None = _CENTRE,
+                            zone_centre: str | None = Query(None, max_length=300)):
+    """Secteurs en chute au jour J, cumul du 1er au jour J (format chutes_secteur_AAAA-MM-JJ.xlsx)."""
+    contenu, nom = service.rapport_chutes(jour, _centre(centre), zone_centre)
+    return Response(contenu, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{nom}"'})
+
+
+@app.get("/api/alertes_secteurs/planifies")
+def get_secteurs_planifies(annee: int | None = Query(None, ge=2000, le=2100), centre: str | None = _CENTRE):
+    """Nombre de secteurs planifiés par centre et par mois."""
+    return _json(service.secteurs_planifies_annee(annee or date.today().year, _centre(centre)))
+
+
+@app.get("/api/alertes_secteurs/detail/{sect_id}")
+def get_alerte_secteur_detail(sect_id: str, jour: date | None = _JOUR_ALERTE):
+    """Un secteur jour par jour du 1er au jour J, et le détail par abonné."""
+    if not _CLE_SECTEUR_OK.fullmatch(sect_id):
+        raise HTTPException(status_code=400, detail="Identifiant de secteur invalide")
+    return _json(service.alerte_secteur_detail(sect_id, jour))
+
 
 @app.get("/api/rapprochement")
 def get_rapprochement(date_debut: date | None = _DEBUT, date_fin: date | None = _FIN,

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fmtDate, fmtEntier } from '../format.js';
+import { fmtEntier } from '../format.js';
 import { useData, useRetard } from '../hooks/useData.js';
 import DataTable from './DataTable.jsx';
 
@@ -47,12 +47,6 @@ export default function Tarifs({ filtres, version, recherche }) {
       {attente && (
         <p className="info-chargement" role="status">
           {attente}
-        </p>
-      )}
-      {data?.tarifs && (
-        <p className="panneau-description">
-          Tarifs du CRM (S_TARIF_PR) chargés le {fmtDate(data.tarifs.charge_le)} pour{' '}
-          {fmtEntier(data.tarifs.nb_abonnements)} abonnements.
         </p>
       )}
 

@@ -6,6 +6,8 @@ import { useData, useRetard } from './hooks/useData.js';
 import { useLive } from './hooks/useLive.js';
 import Tarifs from './components/Tarifs.jsx';
 import Evolution from './components/Evolution.jsx';
+import FiltreZones from './components/FiltreZones.jsx';
+import AlertesSecteurs, { BandeauAlertesSecteurs } from './components/AlertesSecteurs.jsx';
 import DataTable from './components/DataTable.jsx';
 import logoSnde from './logo-snde.js';
 
@@ -101,8 +103,8 @@ function Panneau({ onglet, filtres, version, lignesControle, chargementControle,
   return (
     <section className="panneau" role="tabpanel" aria-label={onglet.titre}>
       <div className="panneau-entete">
-        {/* Sans description, l'emplacement reste pour garder les outils à droite. */}
-        {onglet.description ? <p className="panneau-description">{onglet.description}</p> : <span />}
+        {/* L'emplacement reste pour garder les outils à droite. */}
+        <span />
         <div className="panneau-outils">
           <input
             type="search"
@@ -112,7 +114,7 @@ function Panneau({ onglet, filtres, version, lignesControle, chargementControle,
             onChange={(e) => setRecherche(e.target.value)}
             aria-label="Rechercher dans le tableau"
           />
-          {onglet.id !== 'tarifs' && !evolution && <BoutonsExport jeu={onglet.id} filtres={filtresOnglet} />}
+          {onglet.id !== 'tarifs' && onglet.id !== 'alertes' && !evolution && <BoutonsExport jeu={onglet.id} filtres={filtresOnglet} />}
         </div>
       </div>
       {onglet.id === 'encaissements' && (
@@ -165,6 +167,8 @@ function Panneau({ onglet, filtres, version, lignesControle, chargementControle,
           onLigne={(l) => onCentre(l.centre)}
           aideLigne="Cliquer pour ne garder que ce centre"
         />
+      ) : onglet.id === 'alertes' ? (
+        <AlertesSecteurs filtres={filtres} version={version} recherche={recherche} />
       ) : onglet.id === 'tarifs' ? (
         <Tarifs filtres={filtres} version={version} recherche={recherche} />
       ) : (
@@ -181,7 +185,7 @@ function Panneau({ onglet, filtres, version, lignesControle, chargementControle,
 
 export default function App() {
   const aujourdHui = versISO(new Date());
-  const [filtres, setFiltres] = useState({ dateDebut: aujourdHui, dateFin: aujourdHui, centre: '' });
+  const [filtres, setFiltres] = useState({ dateDebut: aujourdHui, dateFin: aujourdHui, centre: '', zones: [] });
   const [ongletId, setOngletId] = useState('controle');
   const [centres, setCentres] = useState([]);
   const [manuel, setManuel] = useState(0);
@@ -275,6 +279,7 @@ export default function App() {
             <p>SNDE · Encaissements des caisses, versements bancaires et reports par centre</p>
           </div>
         </div>
+        <BandeauAlertesSecteurs centre={filtres.centre} zone={filtres.zones.join(',')} version={version} />
       </header>
 
       <div className="filtres" role="group" aria-label="Filtres">
@@ -349,11 +354,21 @@ export default function App() {
             {anneeActive && !listeAnnees.includes(anneeActive) && <option value={anneeActive}>{anneeActive}</option>}
           </select>
         </label>
+        <FiltreZones
+          zones={[...new Set(centres.map((c) => c.zone).filter(Boolean))].sort()}
+          valeur={filtres.zones}
+          onChange={(z) => {
+            const garde = centres.some(
+              (c) => String(c.centre) === String(filtres.centre) && (!z.length || z.includes(c.zone)),
+            );
+            changer({ zones: z, ...(garde ? {} : { centre: '' }) });
+          }}
+        />
         <label className="etiquette">
           Centre
           <select className="champ" value={filtres.centre} onChange={(e) => changer({ centre: e.target.value })}>
             <option value="">Tous les centres</option>
-            {centres.map((c) => (
+            {centres.filter((c) => !filtres.zones.length || filtres.zones.includes(c.zone)).map((c) => (
               <option key={c.centre} value={c.centre}>
                 {c.centre} — {c.nom_centre}
               </option>

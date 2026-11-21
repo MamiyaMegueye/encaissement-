@@ -8,3 +8,9 @@ backend/data/
 # Modèle des objectifs : données extraites et résultats
 backend/modele_objectifs/donnees/
 backend/modele_objectifs/sorties/
+
+# Rapports quotidiens des chutes de secteurs (23 h)
+backend/sorties_alertes/
+
+# Journal du backend
+backend/logs/

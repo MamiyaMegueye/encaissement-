@@ -121,6 +121,7 @@ SELECT TO_CHAR(a.ABN_ID)  AS abn_id,
        g.GRP_CODE         AS grp_code,
        COALESCE(t.TARP_CODE, u.TARIFA) AS tarif,
        sec.SECT_CODE       AS secteur,
+       TO_CHAR(a.SECT_ID)  AS sect_id,
        CASE WHEN a.ABN_RES = 1                    THEN 'Résilié'
             WHEN NVL(a.ABN_RES, 0) = 0 AND a.FLAG_SUS = 1 THEN 'Suspendu'
             ELSE 'Actif' END AS statut
@@ -679,4 +680,66 @@ FROM recap_lag l
 JOIN {schema}.S_STRUCTURE s ON s.STR_ID = l.STR_ID
 WHERE l.jour >= :d1
   {_filtre_centre(avec_centre)}
+"""
+
+
+def sql_planif_secteurs(schema: str) -> str:
+    """Planning des relevés par secteur (PLANIF_RELEVE + PLANIFDETAILLE) et
+    jour réel de facturation de chaque passage.
+
+    - Un plan par secteur et par année ; s'il y en a plusieurs, le dernier
+      PLAN_REL_ID est gardé. PLANIFDETAILLE : une ligne par mois planifié
+      (6 par an pour un bimensuel, 11 ou 12 pour un mensuel ; TYPE = FLAG_MENS).
+    - DATEDEBUTFACT : début du relevé prévu ; DATEDEBUTSEMAINE : facturation prévue.
+    - Jour réel : jour où le secteur a le plus de factures (S_FACTURE_M) pour la
+      période FACT_PERIODE = mois planifié (au moins 5 factures : les autres
+      jours ne sont que des rattrapages). FACT_PERIODE n'a pas d'année : elle
+      est déduite de la date de facture.
+    Paramètres : :d0 (début de la fenêtre des factures), :a0 (première année du planning).
+    """
+    return f"""
+WITH plan AS (
+  SELECT p.SECT_ID, d.ANNEE, d.MOIS, d.TYPE AS flag_mens,
+         d.DATEDEBUTFACT, d.DATEDEBUTSEMAINE,
+         ROW_NUMBER() OVER (PARTITION BY p.SECT_ID, d.ANNEE, d.MOIS
+                            ORDER BY p.PLAN_REL_ID DESC, d.IDDET DESC) AS rn
+  FROM {schema}.PLANIFDETAILLE d
+  JOIN {schema}.PLANIF_RELEVE p ON p.PLAN_REL_ID = d.PLAN_REL_ID
+  WHERE d.ANNEE >= :a0
+),
+jours AS (
+  SELECT f.SECT_ID, f.FACT_PERIODE AS mois, TRUNC(f.FACT_DATE) AS jour, COUNT(*) AS nb
+  FROM {schema}.S_FACTURE_M f
+  WHERE f.FACT_DATE >= :d0 AND f.FACT_PERIODE BETWEEN 1 AND 12
+  GROUP BY f.SECT_ID, f.FACT_PERIODE, TRUNC(f.FACT_DATE)
+  HAVING COUNT(*) >= 5
+),
+jours_a AS (
+  SELECT j.SECT_ID, j.mois, j.jour, j.nb,
+         CASE WHEN j.mois = 12 AND EXTRACT(MONTH FROM j.jour) = 1 THEN EXTRACT(YEAR FROM j.jour) - 1
+              WHEN j.mois = 1 AND EXTRACT(MONTH FROM j.jour) = 12 THEN EXTRACT(YEAR FROM j.jour) + 1
+              ELSE EXTRACT(YEAR FROM j.jour) END AS annee
+  FROM jours j
+),
+pic AS (
+  SELECT SECT_ID, mois, annee, jour, nb,
+         ROW_NUMBER() OVER (PARTITION BY SECT_ID, mois, annee ORDER BY nb DESC, jour) AS rn
+  FROM jours_a
+)
+SELECT st.STR_CODE                  AS centre,
+       TO_CHAR(s.SECT_ID)           AS sect_id,
+       s.SECT_CODE                  AS secteur,
+       CASE WHEN pl.flag_mens = 1 THEN 'MENSUEL' ELSE 'BIMENSUEL' END AS frequence,
+       pl.ANNEE                     AS annee,
+       pl.MOIS                      AS mois,
+       pl.DATEDEBUTFACT             AS date_releve_plan,
+       pl.DATEDEBUTSEMAINE          AS date_plan,
+       pc.jour                      AS date_fact_reelle,
+       pc.nb                        AS nb_factures
+FROM plan pl
+JOIN {schema}.S_SECTEUR s    ON s.SECT_ID = pl.SECT_ID
+JOIN {schema}.S_STRUCTURE st ON st.STR_ID = s.STR_ID
+LEFT JOIN pic pc ON pc.SECT_ID = pl.SECT_ID AND pc.annee = pl.ANNEE
+                AND pc.mois = pl.MOIS AND pc.rn = 1
+WHERE pl.rn = 1
 """
